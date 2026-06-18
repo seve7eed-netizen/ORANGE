@@ -91,13 +91,11 @@ export default function Hero({ onScrollToArchive }: HeroProps) {
         {/* Work pillars shortcuts */}
         <motion.div 
           variants={itemVariants}
-          className="grid grid-cols-2 lg:grid-cols-4 gap-4 w-full max-w-4xl"
+          className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-2xl"
         >
           {[
             { tag: 'PHOTOGRAPHY', title: '사진 촬영' },
-            { tag: 'VIDEOGRAPHY', title: '영상 촬영' },
-            { tag: 'EDITING', title: '영상 편집' },
-            { tag: 'RETOUCHING', title: '사진 보정' }
+            { tag: 'VIDEOGRAPHY', title: '영상 촬영' }
           ].map((pillar, idx) => (
             <div 
               key={idx}

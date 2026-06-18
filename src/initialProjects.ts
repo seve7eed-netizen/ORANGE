@@ -35,38 +35,6 @@ export const initialProjects: Project[] = [
     featured: true
   },
   {
-    id: 'p3',
-    title: 'Echoes of Silence (음악 필름)',
-    client: 'LUNA Collective',
-    period: '2025.11 - 2025.12',
-    scope: ['영상 전체 편집', '리듬 몬타주', '사운드 디자인', '필름 이펙트'],
-    description: '리듬의 미세조정에 초점을 맞춘 내러티브 패스트 컷 편집 프로젝트입니다. 아티스트의 고독한 발걸음과 악기 선율의 데시벨에 맞춰 컷을 극단적이고 과감하게 중첩시키는 몬타주 기법을 메인으로 차용했습니다. 정밀한 폴리 사운드 조작으로 시각에서 청각적 온도를 생생하게 느낄 수 있도록 조율했습니다.',
-    tools: ['Adobe Premiere Pro CC', 'After Effects', 'ProTools Studio'],
-    coverImage: 'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?auto=format&fit=crop&q=80&w=1200',
-    additionalImages: [
-      'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&q=80&w=800',
-      'https://images.unsplash.com/photo-1543536448-d209d2d13a1c?auto=format&fit=crop&q=80&w=800'
-    ],
-    videoUrl: 'https://www.youtube.com/embed/377gJ0K9Fbg',
-    category: 'editing',
-    featured: true
-  },
-  {
-    id: 'p4',
-    title: 'Monolith Redux (건축 파인아트)',
-    client: 'Studio K Architects',
-    period: '2026.02',
-    scope: ['사진 톤 보정', '투시 기하 왜곡 수정', '디지털 파인아트 리터칭'],
-    description: '초현대주의 건축물이 가진 압도적인 질감과 완벽한 선의 미학을 전례 없이 깊고 서늘한 회색조로 보정한 리터칭 작업입니다. 캡쳐 원의 픽셀 전용 스케일에서부터 포토샵 마스킹 레이어를 수십 층 레이어링하여 대칭을 맞추고, 하늘의 콘트라스트를 정형화하여 차갑고 묵직한 거석 고유의 무게감을 묘사했습니다.',
-    tools: ['Capture One Studio', 'Adobe Photoshop', 'Wacom Intuos Pro'],
-    coverImage: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&q=80&w=1200',
-    additionalImages: [
-      'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&q=80&w=800'
-    ],
-    category: 'retouching',
-    featured: false
-  },
-  {
     id: 'p5',
     title: 'Crafted Hands (세대의 기록 장인)',
     client: 'D&C Leather Federation',
@@ -80,22 +48,6 @@ export const initialProjects: Project[] = [
     ],
     videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
     category: 'videography',
-    featured: false
-  },
-  {
-    id: 'p6',
-    title: 'Neon Kinetic (네온 키네틱 패션필름)',
-    client: 'VERGE Seoul',
-    period: '2026.05 - 2026.06',
-    scope: ['브랜드 필름 편집', '사운드 큐레이팅', '네온 톤 색채 그레이딩'],
-    description: '사이버펑크 무드의 네온 조명이 번뜩이는 서울의 화려한 밤거리를 캔버스로 하여, 버츄얼 크리에이터와의 협업 패션 필름을 연출한 후반 에디팅 프로젝트입니다. 순간적인 글리치 이펙트, 입체적인 플래시백 전환, 심장 박동에 맞춘 다이내믹한 템포 조정을 통해, 초감각적이고 세련된 아방가르드 아카이브를 완성했습니다.',
-    tools: ['Adobe After Effects', 'Premiere Pro', 'DaVinci Resolve Studio', 'Boris FX Continuum'],
-    coverImage: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&q=80&w=1200',
-    additionalImages: [
-      'https://images.unsplash.com/photo-1543536448-d209d2d13a1c?auto=format&fit=crop&q=80&w=800'
-    ],
-    videoUrl: 'https://www.youtube.com/embed/377gJ0K9Fbg',
-    category: 'editing',
     featured: false
   }
 ];
@@ -114,19 +66,5 @@ export const services: ServiceDetail[] = [
     englishTitle: 'VIDEOGRAPHY & CINEMA',
     description: '이야기와 감정의 궤도를 정밀하게 추적하는 고화질 시네마 레코딩을 주도합니다. 철저한 마스터 샷 계획, 조명 동선 설계, 핸드헬드와 정적 삼각대 구도를 결합해 세련되고 극적인 시각 서사를 가꿉니다.',
     capabilities: ['크리에이티브 다큐멘터리', '브랜드 무비 & 패션필름', '비주얼 루프 아키텍쳐', '4K/6K RAW 시네마 레코딩']
-  },
-  {
-    id: 's3',
-    title: '영상 편집',
-    englishTitle: 'POST-PRODUCTION EDITING',
-    description: '프레임 단위의 타이밍 절삭과 청각적인 사운드 조작을 극단적으로 동기화하여 완결성 높은 몰입을 구현합니다. 서사의 속도를 매혹적으로 연출하며, 필름 이펙트와 타이포 무브먼트를 심도 있게 배열합니다.',
-    capabilities: ['타이밍 오리엔티드 매치컷', '필름 이펙추얼 디자인', '오디오 폴리 사운드 메이킹', '시네마틱 컬러 조율']
-  },
-  {
-    id: 's4',
-    title: '사진 보정',
-    englishTitle: 'FINE-ART RETOUCHING',
-    description: '엄격한 하이엔드 픽셀 조율을 바탕으로 하는 하이엔드 보정 솔루션입니다. 렌즈 수차 왜곡을 완벽에 수렴하게 환원하고 피부 질감 본연의 결과 섬세한 섀도 색감을 다채롭게 가공하여 기조를 유지시킵니다.',
-    capabilities: ['상업 인물 정밀 스킨 리터칭', '건축물 고정 수차 리덕션', '중형 센서 디테일 레벨 강화', '톤 보정 & 시안 제작']
   }
 ];

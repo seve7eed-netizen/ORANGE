@@ -9,11 +9,11 @@ export interface Project {
   coverImage: string;
   additionalImages: string[];
   videoUrl?: string; // Optional embedded video link (YouTube, Vimeo, or direct link)
-  category: 'photography' | 'videography' | 'editing' | 'retouching';
+  category: 'photography' | 'videography';
   featured?: boolean;
 }
 
-export type CategoryFilter = 'all' | 'photography' | 'videography' | 'editing' | 'retouching';
+export type CategoryFilter = 'all' | 'photography' | 'videography';
 
 export interface ServiceDetail {
   id: string;

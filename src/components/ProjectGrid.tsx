@@ -15,9 +15,7 @@ export default function ProjectGrid({ projects, onProjectClick }: ProjectGridPro
   const categories: { value: CategoryFilter; label: string }[] = [
     { value: 'all', label: 'ALL CR' },
     { value: 'photography', label: '사진 촬영' },
-    { value: 'videography', label: '영상 촬영' },
-    { value: 'editing', label: '영상 편집' },
-    { value: 'retouching', label: '사진 보정' }
+    { value: 'videography', label: '영상 촬영' }
   ];
 
   // Filtering + Searching
@@ -109,9 +107,7 @@ export default function ProjectGrid({ projects, onProjectClick }: ProjectGridPro
             {filteredProjects.map((project, index) => {
               const formattedIndex = String(index + 1).padStart(2, '0');
               const displayCategory = 
-                project.category === 'photography' ? '사진 촬영' :
-                project.category === 'videography' ? '영상 촬영' :
-                project.category === 'editing' ? '영상 편집' : '사진 보정';
+                project.category === 'photography' ? '사진 촬영' : '영상 촬영';
 
               return (
                 <motion.div

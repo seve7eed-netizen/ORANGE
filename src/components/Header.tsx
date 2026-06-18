@@ -38,9 +38,7 @@ export default function Header({
   }, []);
 
   const menuItems = [
-    { id: 'gallery', label: 'EXHIBITION ARCHIVE' },
-    { id: 'services', label: 'WORK RANGE' },
-    { id: 'philosophy', label: 'PHILOSOPHY' }
+    { id: 'gallery', label: 'EXHIBITION ARCHIVE' }
   ];
 
   const handleNavClick = (tabId: string) => {

@@ -352,8 +352,6 @@ export default function AdminPanel({
                     >
                       <option value="photography">사진 촬영</option>
                       <option value="videography">영상 촬영</option>
-                      <option value="editing">영상 편집</option>
-                      <option value="retouching">사진 보정</option>
                     </select>
                   </div>
                   <div className="flex items-center gap-2 pt-5">
@@ -525,9 +523,7 @@ export default function AdminPanel({
               <div className="flex flex-col gap-3 overflow-y-auto pr-1 no-scrollbar flex-1">
                 {projects.map((p) => {
                   const displayCategory = 
-                    p.category === 'photography' ? '사진 촬영' :
-                    p.category === 'videography' ? '영상 촬영' :
-                    p.category === 'editing' ? '영상 편집' : '사진 보정';
+                    p.category === 'photography' ? '사진 촬영' : '영상 촬영';
 
                   return (
                     <div 
