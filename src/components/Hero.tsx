@@ -1,13 +1,36 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { ChevronDown } from 'lucide-react';
 
 interface HeroProps {
   onScrollToArchive: () => void;
   onPillarClick?: (category: 'photography' | 'videography') => void;
+  scrollY?: number;
 }
 
-export default function Hero({ onScrollToArchive, onPillarClick }: HeroProps) {
+export default function Hero({ onScrollToArchive, onPillarClick, scrollY = 0 }: HeroProps) {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const updateSize = () => {
+      setIsMobile(window.innerWidth < 640);
+    };
+    updateSize();
+    window.addEventListener('resize', updateSize);
+    return () => window.removeEventListener('resize', updateSize);
+  }, []);
+
+  const scrollRange = 400;
+  const progress = Math.min(scrollY / scrollRange, 1);
+  
+  // High-fidelity responsive starter scale
+  const baseScale = isMobile ? 1.35 : 1.75;
+  const currentScale = baseScale - (baseScale - 1.0) * progress;
+
+  // Slowly reveal other branding content on scroll past critical threshold
+  const detailOpacity = Math.max(0, Math.min((scrollY - 40) / 240, 1));
+  const pointerEventsClass = detailOpacity < 0.1 ? 'none' : 'auto';
+
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
@@ -24,7 +47,7 @@ export default function Hero({ onScrollToArchive, onPillarClick }: HeroProps) {
     visible: { 
       opacity: 1, 
       y: 0,
-      transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] }
+      transition: { duration: 1.5, ease: [0.16, 1, 0.3, 1] }
     }
   };
 
@@ -41,7 +64,11 @@ export default function Hero({ onScrollToArchive, onPillarClick }: HeroProps) {
         {/* ==================== THE GOLDEN-RATIO RUNNING TRACK MASTER COMPOSITION (Z-1) ==================== */}
         <motion.div 
           variants={itemVariants} 
-          className="w-full max-w-4xl flex flex-col items-center mb-10 sm:mb-12 uppercase relative z-1"
+          style={{ 
+            scale: currentScale,
+            transformOrigin: 'center center'
+          }}
+          className="w-full max-w-4xl flex flex-col items-center mb-10 sm:mb-12 uppercase relative z-1 transition-transform duration-75 ease-out"
         >
           {/* Running Track SVG - Proportioned exactly to the Golden Ratio (890 x 550) */}
           <div className="w-full flex items-center justify-center relative">
@@ -108,7 +135,7 @@ export default function Hero({ onScrollToArchive, onPillarClick }: HeroProps) {
                     fontFamily="Syncopate, sans-serif" 
                     fontWeight="700" 
                     fontSize="36" 
-                    fill="#e5e8e8" 
+                    fill="#eceae7" 
                     letterSpacing="1"
                     dominantBaseline="middle"
                     className="select-none pointer-events-none"
@@ -150,7 +177,7 @@ export default function Hero({ onScrollToArchive, onPillarClick }: HeroProps) {
                   fontFamily="Outfit, SUIT, system-ui, sans-serif" 
                   fontWeight="800" 
                   fontSize="18" 
-                  fill="#7f9090" 
+                  fill="#9d9690" 
                   textAnchor="middle" 
                   dominantBaseline="middle" 
                   letterSpacing="14"
@@ -164,11 +191,12 @@ export default function Hero({ onScrollToArchive, onPillarClick }: HeroProps) {
           </div>
         </motion.div>
         {/* ==================== END OF COMPOSITION ==================== */}
-
+        
         {/* Philosophy Intro & Description (Placed cleanly at relative z-10 for pixel-perfect readability) */}
         <motion.div 
           variants={itemVariants}
-          className="max-w-2xl flex flex-col items-center text-center px-4 relative z-10"
+          style={{ opacity: detailOpacity, pointerEvents: pointerEventsClass as any }}
+          className="max-w-2xl flex flex-col items-center text-center px-4 relative z-10 transition-opacity duration-300"
         >
           <blockquote className="font-sans text-base sm:text-lg text-white/90 italic font-medium leading-relaxed tracking-wide mb-6">
             "예정된 계획대로 진행되고 있다. 올바른 방향으로 정상 궤도에 올라와 있다."
@@ -182,7 +210,8 @@ export default function Hero({ onScrollToArchive, onPillarClick }: HeroProps) {
         {/* Work pillars shortcuts (Placed cleanly at relative z-10) */}
         <motion.div 
           variants={itemVariants}
-          className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-2xl mb-12 sm:mb-16 relative z-10"
+          style={{ opacity: detailOpacity, pointerEvents: pointerEventsClass as any }}
+          className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-2xl mb-12 sm:mb-16 relative z-10 transition-opacity duration-300"
         >
           {[
             { tag: 'PHOTOGRAPHY' as const, title: '사진 촬영', category: 'photography' as const },
@@ -209,7 +238,8 @@ export default function Hero({ onScrollToArchive, onPillarClick }: HeroProps) {
         {/* Scroll indicator (Placed cleanly at relative z-10) */}
         <motion.div 
           variants={itemVariants}
-          className="mt-4 flex flex-col items-center gap-2 cursor-pointer text-dark-muted hover:text-accent transition-colors duration-300 relative z-10"
+          style={{ opacity: detailOpacity, pointerEvents: pointerEventsClass as any }}
+          className="mt-4 flex flex-col items-center gap-2 cursor-pointer text-dark-muted hover:text-accent transition-colors duration-300 relative z-10 transition-opacity duration-300"
           onClick={onScrollToArchive}
           id="hero-scroll-indicator"
         >

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Project, CategoryFilter } from '../types';
-import { Lock, Unlock, Plus, Trash2, Edit2, Download, Upload, RotateCcw, AlertTriangle, FileText, Check, ArrowRight } from 'lucide-react';
+import { Lock, Unlock, Plus, Trash2, Edit2, Download, Upload, RotateCcw, AlertTriangle, FileText, Check, ArrowRight, Image as ImageIcon, Film, Video, Star } from 'lucide-react';
 
 interface AdminPanelProps {
   projects: Project[];
@@ -41,6 +41,11 @@ export default function AdminPanel({
   const [videoUrl, setVideoUrl] = useState('');
   const [featured, setFeatured] = useState(false);
 
+  // Direct File Upload & Representative selection states
+  const [uploadedFiles, setUploadedFiles] = useState<{ id: string; url: string; name: string; type: 'image' | 'video' }[]>([]);
+  const [representativeId, setRepresentativeId] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
   // Raw JSON Backup state
   const [jsonBackupText, setJsonBackupText] = useState('');
   const [backupSuccessMsg, setBackupSuccessMsg] = useState('');
@@ -69,6 +74,18 @@ export default function AdminPanel({
 
   const handleApplyPresetImage = (url: string) => {
     setCoverImage(url);
+    
+    // Also push to uploadedFiles for consistency
+    const id = 'preset_' + Date.now();
+    setUploadedFiles(prev => {
+      const filtered = prev.filter(f => !f.id.startsWith('preset_'));
+      const nextFiles = [
+        ...filtered,
+        { id, url, name: '프리셋 이미지', type: 'image' }
+      ];
+      setRepresentativeId(id);
+      return nextFiles;
+    });
   };
 
   const startEdit = (p: Project) => {
@@ -84,6 +101,44 @@ export default function AdminPanel({
     setAdditionalImagesRaw(p.additionalImages.join(', '));
     setVideoUrl(p.videoUrl || '');
     setFeatured(p.featured || false);
+
+    // Initialize list with project resources
+    const list: { id: string; url: string; name: string; type: 'image' | 'video' }[] = [];
+    let repId: string | null = null;
+
+    if (p.coverImage) {
+      const cid = 'cover_' + Date.now();
+      list.push({
+        id: cid,
+        url: p.coverImage,
+        name: '대표 이미지 (Main Cover)',
+        type: 'image'
+      });
+      repId = cid;
+    }
+
+    if (p.additionalImages && p.additionalImages.length > 0) {
+      p.additionalImages.forEach((img, idx) => {
+        list.push({
+          id: 'add_' + idx + '_' + Date.now(),
+          url: img,
+          name: `추가 이미지 #${idx + 1}`,
+          type: 'image'
+        });
+      });
+    }
+
+    if (p.videoUrl) {
+      list.push({
+        id: 'video_' + Date.now(),
+        url: p.videoUrl,
+        name: '프로젝트 비디오 (Embedded/Uploaded)',
+        type: 'video'
+      });
+    }
+
+    setUploadedFiles(list);
+    setRepresentativeId(repId);
   };
 
   const clearForm = () => {
@@ -99,12 +154,143 @@ export default function AdminPanel({
     setAdditionalImagesRaw('');
     setVideoUrl('');
     setFeatured(false);
+    setUploadedFiles([]);
+    setRepresentativeId(null);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    processFiles(files);
+  };
+
+  const processFiles = (files: FileList) => {
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const url = event.target?.result as string;
+        const isVideo = file.type.startsWith('video/');
+        const newFile = {
+          id: 'file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+          url,
+          name: file.name,
+          type: (isVideo ? 'video' : 'image') as 'image' | 'video'
+        };
+
+        setUploadedFiles((prev) => {
+          const updated = [...prev, newFile];
+          
+          // Auto-set Representative if it's the first image in the set
+          if (!isVideo && !representativeId) {
+            setRepresentativeId(newFile.id);
+            setCoverImage(url);
+          }
+          
+          return updated;
+        });
+
+        // Set videoUrl field if it's a video file type
+        if (isVideo) {
+          setVideoUrl(url);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      processFiles(files);
+    }
+  };
+
+  const handleRemoveUploadedFile = (id: string) => {
+    setUploadedFiles((prev) => {
+      const filtered = prev.filter((f) => f.id !== id);
+      
+      // If removed item was representative, pick next available image
+      if (id === representativeId) {
+        const nextImg = filtered.find((f) => f.type === 'image');
+        if (nextImg) {
+          setRepresentativeId(nextImg.id);
+          setCoverImage(nextImg.url);
+        } else {
+          setRepresentativeId(null);
+          setCoverImage('');
+        }
+      }
+
+      // If removed item is video, clear videoUrl
+      const wasVideo = prev.find((f) => f.id === id)?.type === 'video';
+      if (wasVideo) {
+        setVideoUrl('');
+      }
+
+      return filtered;
+    });
+  };
+
+  const handleSetRepresentative = (id: string) => {
+    const file = uploadedFiles.find((f) => f.id === id);
+    if (file) {
+      if (file.type === 'video') {
+        alert('영상 파일은 대표 이미지로 지정할 수 없습니다. 이미지 파일을 지정해 주세요.');
+        return;
+      }
+      setRepresentativeId(id);
+      setCoverImage(file.url);
+    }
   };
 
   const handleSaveProject = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title || !client || !coverImage) {
-      alert('프로젝트명, 클라이언트명, 대표 이미지 URL은 필수 정보입니다.');
+
+    // Resolve cover, additional, and video from interactive uploaded files list
+    let finalCoverImage = coverImage;
+    let finalAddImages = additionalImagesRaw
+      .split(',')
+      .map((i) => i.trim())
+      .filter((i) => i.length > 0);
+    let finalVideoUrl = videoUrl;
+
+    if (uploadedFiles.length > 0) {
+      // Find selected representative
+      const selectedRep = uploadedFiles.find(f => f.id === representativeId && f.type === 'image');
+      if (selectedRep) {
+        finalCoverImage = selectedRep.url;
+      } else {
+        const firstImg = uploadedFiles.find(f => f.type === 'image');
+        if (firstImg) {
+          finalCoverImage = firstImg.url;
+        }
+      }
+
+      // Extract additional gallery images (all other images)
+      finalAddImages = uploadedFiles
+        .filter(f => f.type === 'image' && f.url !== finalCoverImage)
+        .map(f => f.url);
+
+      // Extract video if any
+      const videoItem = uploadedFiles.find(f => f.type === 'video');
+      if (videoItem) {
+        finalVideoUrl = videoItem.url;
+      }
+    }
+
+    if (!title || !client || !finalCoverImage) {
+      alert('프로젝트명, 클라이언트명, 대표 이미지 URL(혹은 직접 업로드된 이미지 파일)은 필수 항목입니다.');
       return;
     }
 
@@ -118,11 +304,6 @@ export default function AdminPanel({
       .map((t) => t.trim())
       .filter((t) => t.length > 0);
 
-    const cleanedAddImages = additionalImagesRaw
-      .split(',')
-      .map((i) => i.trim())
-      .filter((i) => i.length > 0);
-
     const projectData: Project = {
       id: isEditingId || 'p_' + Date.now(),
       title,
@@ -132,9 +313,9 @@ export default function AdminPanel({
       category,
       tools: cleanedTools.length > 0 ? cleanedTools : ['Camera', 'Photoshop'],
       description: description || '등록된 프로젝트 세부 설명이 없습니다.',
-      coverImage,
-      additionalImages: cleanedAddImages,
-      videoUrl: videoUrl || undefined,
+      coverImage: finalCoverImage,
+      additionalImages: finalAddImages,
+      videoUrl: finalVideoUrl || undefined,
       featured
     };
 
@@ -413,76 +594,205 @@ export default function AdminPanel({
                   />
                 </div>
 
-                {/* Cover Image URL */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="font-mono text-[9px] text-dark-muted uppercase tracking-widest block">
-                      REPRESENT IMAGE URL (대표 썸네일 이미지 URL) *
-                    </label>
-                    <span className="text-[8px] text-accent font-bold">임시 이미지 퀵 로드 지원</span>
-                  </div>
-                  <input
-                    type="url"
-                    placeholder="https://images.unsplash.com/photo-..."
-                    value={coverImage}
-                    onChange={(e) => setCoverImage(e.target.value)}
-                    required
-                    className="w-full bg-dark-bg border border-dark-border py-1.5 px-3 rounded-xs text-xs text-white focus:border-accent/50 focus:outline-none"
-                    id="form-cover-image-input"
-                  />
+                {/* 1. Direct File Upload Zone */}
+                <div className="border border-dark-border bg-dark-bg/40 p-4 rounded-sm">
+                  <span className="font-mono text-[9px] text-accent uppercase tracking-widest block mb-2 font-black">
+                    [ GALLERY MEDIA UPLOAD // 직접 미디어 파일 업로드 ]
+                  </span>
                   
-                  {/* Quick Preset Selector */}
-                  <div className="mt-2 p-3 bg-dark-bg border border-dark-border rounded-xs">
-                    <span className="font-mono text-[8px] text-dark-muted uppercase tracking-wider block mb-1.5">
-                      [ DESIGN TOOLKIT // HIGH-QUALITY CINEMATIC PLACEHOLDERS ]
-                    </span>
-                    <div className="flex flex-wrap gap-1">
-                      {presets.map((preset, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => handleApplyPresetImage(preset.url)}
-                          className="px-2 py-1 text-[9px] font-outfit text-white hover:text-accent bg-dark-card border border-dark-border hover:border-accent/40 rounded-sm cursor-pointer transition-colors"
-                          id={`preset-img-btn-${idx}`}
-                        >
-                          {preset.name}
-                        </button>
-                      ))}
-                    </div>
+                  {/* Drag and Drop Container */}
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={`border-2 border-dashed rounded-sm p-6 text-center cursor-pointer transition-colors ${
+                      isDragging
+                        ? 'border-accent bg-accent/10'
+                        : 'border-dark-border/80 hover:border-accent/40 bg-dark-card/25'
+                    }`}
+                    onClick={() => document.getElementById('media-file-input')?.click()}
+                  >
+                    <input
+                      type="file"
+                      id="media-file-input"
+                      multiple
+                      accept="image/*,video/*"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                    <Upload size={24} className="mx-auto mb-2 text-dark-muted group-hover:text-accent" />
+                    <p className="text-xs text-white uppercase font-sans font-medium mb-1">
+                      클릭하거나 사진/동영상을 이 곳으로 드래그 하세요
+                    </p>
+                    <p className="text-[10px] text-dark-muted font-mono">
+                      (PNG, JPG, WEBP, MP4, MOV 등 지원)
+                    </p>
                   </div>
+
+                  {/* Uploaded Files grid with custom checkboxes to "Set as Representative Picture" */}
+                  {uploadedFiles.length > 0 && (
+                    <div className="mt-4 border-t border-dark-border/40 pt-4">
+                      <span className="font-mono text-[9px] text-dark-muted uppercase tracking-widest block mb-1 font-extrabold">
+                        첨부 및 업로드된 파일 리스트 ({uploadedFiles.length})
+                      </span>
+                      <p className="text-[8px] font-mono text-dark-muted mb-2.5">
+                        ※ "대표로 지정" 박스를 선택하여 업로드물 중 대표 사진(커버)을 손쉽게 설정하여 주십시오.
+                      </p>
+                      <div className="flex flex-col gap-2 max-h-[220px] overflow-y-auto no-scrollbar">
+                        {uploadedFiles.map((file) => {
+                          const isRepresentative = file.id === representativeId;
+                          return (
+                            <div
+                              key={file.id}
+                              className={`flex items-center justify-between p-2 rounded-xs border text-left bg-dark-bg/65 ${
+                                isRepresentative ? 'border-accent bg-accent-dim/10' : 'border-dark-border/50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3 overflow-hidden flex-1">
+                                {/* Thumbnail */}
+                                <div className="h-10 w-12 bg-black border border-dark-border flex-shrink-0 overflow-hidden relative flex items-center justify-center rounded-xs">
+                                  {file.type === 'image' ? (
+                                    <img
+                                      src={file.url}
+                                      alt={file.name}
+                                      className="h-full w-full object-cover"
+                                      referrerPolicy="no-referrer"
+                                    />
+                                  ) : (
+                                    <Video size={14} className="text-accent" />
+                                  )}
+                                </div>
+                                <div className="overflow-hidden pr-2">
+                                  <p className="text-[10px] text-white truncate font-medium max-w-[150px] sm:max-w-xs">{file.name}</p>
+                                  <p className="font-mono text-[8px] text-dark-muted uppercase">
+                                    {file.type === 'image' ? 'IMAGE FILE' : 'VIDEO FILE'}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {/* Representative Setting Box */}
+                                {file.type === 'image' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSetRepresentative(file.id)}
+                                    className={`flex items-center gap-1.5 py-1 px-2.5 border rounded-xs font-mono text-[8px] font-bold tracking-wider cursor-pointer transition-all ${
+                                      isRepresentative
+                                        ? 'bg-accent border-accent text-black font-black'
+                                        : 'border-dark-border/80 text-dark-muted hover:text-white hover:border-accent/40'
+                                    }`}
+                                    title="대표 사진(Cover)으로 지정"
+                                  >
+                                    {isRepresentative ? (
+                                      <>
+                                        <Check size={8} className="stroke-[3]" />
+                                        <span>[ 대표 사진 ]</span>
+                                      </>
+                                    ) : (
+                                      <span>[ 대표로 지정 ]</span>
+                                    )}
+                                  </button>
+                                )}
+
+                                {/* Delete button */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveUploadedFile(file.id)}
+                                  className="p-1 px-2 border border-red-900/30 text-red-400 hover:bg-red-950/20 rounded-xs hover:border-red-500/20 cursor-pointer transition-colors"
+                                  title="첨부 해제"
+                                >
+                                  <Trash2 size={10} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* Additional Images (Comma separated) */}
-                <div>
-                  <label className="font-mono text-[9px] text-dark-muted uppercase tracking-widest block mb-1">
-                    ADDITIONAL PORTFOLIO IMAGES (추가 갤러리 이미지 URL - 쉼표 구분)
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder="추가적으로 고화질 상세 뷰에 띄울 Unsplash 등의 이미지들을 쉼표(,) 혹은 한 줄 단위로 기술해 둡니다."
-                    value={additionalImagesRaw}
-                    onChange={(e) => setAdditionalImagesRaw(e.target.value)}
-                    className="w-full bg-dark-bg border border-dark-border py-2 px-3 rounded-xs text-xs text-white placeholder-dark-muted focus:border-accent/50 focus:outline-none"
-                    id="form-additional-images-textarea"
-                  />
-                </div>
+                {/* Advanced URL Fields (collapsible/secondary so they can still manually feed fallback URLs or presets) */}
+                <div className="border border-dark-border/40 p-4 rounded-sm bg-dark-bg/25">
+                  <details className="group">
+                    <summary className="font-mono text-[9px] text-dark-muted uppercase tracking-widest cursor-pointer select-none list-none flex items-center justify-between outline-none">
+                      <span>[ ADVANCED: MANUAL MEDIATOR URLS // 직접 수동 입력 및 복사 설정 ]</span>
+                      <span className="text-accent group-open:rotate-180 transition-transform">▼</span>
+                    </summary>
+                    
+                    <div className="mt-4 flex flex-col gap-4">
+                      {/* Cover Image URL */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="font-mono text-[9px] text-dark-muted uppercase tracking-widest block">
+                            REPRESENT IMAGE URL (대표 이미지 주소)
+                          </label>
+                          <span className="text-[8px] text-accent font-bold">임시 이미지 퀵 로드 지원</span>
+                        </div>
+                        <input
+                          type="url"
+                          placeholder="https://images.unsplash.com/photo-..."
+                          value={coverImage}
+                          onChange={(e) => setCoverImage(e.target.value)}
+                          className="w-full bg-dark-bg border border-dark-border py-1.5 px-3 rounded-xs text-[10px] text-white focus:border-accent/50 focus:outline-none"
+                          id="form-cover-image-input"
+                        />
+                        
+                        {/* Quick Preset Selector */}
+                        <div className="mt-2 p-2 bg-dark-bg border border-dark-border rounded-xs">
+                          <span className="font-mono text-[7px] text-dark-muted uppercase tracking-wider block mb-1">
+                            고화질 시네마틱 프리셋 주소 퀵 로드
+                          </span>
+                          <div className="flex flex-wrap gap-1">
+                            {presets.map((preset, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => handleApplyPresetImage(preset.url)}
+                                className="px-1.5 py-0.5 text-[8px] font-outfit text-white hover:text-accent bg-dark-card border border-dark-border hover:border-accent/40 rounded-sm cursor-pointer transition-colors"
+                                id={`preset-img-btn-${idx}`}
+                              >
+                                {preset.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
 
-                {/* Video Embed Link */}
-                <div>
-                  <label className="font-mono text-[9px] text-dark-muted uppercase tracking-widest block mb-1">
-                    VIDEO EMBED COMPONENT URL (상세 페이지 삽입용 플레이어 영상 URL - 유튜브/비메오 Embed)
-                  </label>
-                  <input
-                    type="url"
-                    placeholder="예시: https://www.youtube.com/embed/dQw4w9WgXcQ"
-                    value={videoUrl}
-                    onChange={(e) => setVideoUrl(e.target.value)}
-                    className="w-full bg-dark-bg border border-dark-border py-1.5 px-3 rounded-xs text-xs text-white focus:border-accent/50 focus:outline-none"
-                    id="form-video-url-input"
-                  />
-                  <p className="font-mono text-[9px] text-dark-muted mt-1 leading-relaxed text-[8px]">
-                    ※ 반드시 "/embed/" 스키마가 들어있는 Iframe용 플레이어 전송 소스를 추가하여 주십시오.
-                  </p>
+                      {/* Additional URLs */}
+                      <div>
+                        <label className="font-mono text-[9px] text-dark-muted uppercase tracking-widest block mb-1">
+                          ADDITIONAL GALLERY IMAGES (추가 이미지 주소 - 쉼표 구분)
+                        </label>
+                        <textarea
+                          rows={2}
+                          placeholder="수동으로 추가하고 싶은 원격 이미지 URL 입력"
+                          value={additionalImagesRaw}
+                          onChange={(e) => setAdditionalImagesRaw(e.target.value)}
+                          className="w-full bg-dark-bg border border-dark-border py-1.5 px-3 rounded-xs text-[10px] text-white placeholder-dark-muted focus:border-accent/50 focus:outline-none"
+                          id="form-additional-images-textarea"
+                        />
+                      </div>
+
+                      {/* Video Embed Link */}
+                      <div>
+                        <label className="font-mono text-[9px] text-dark-muted uppercase tracking-widest block mb-1">
+                          VIDEO EMBED OR CONTENT URL (외부 유튜브 플레이어 또는 동영상 링크)
+                        </label>
+                        <input
+                          type="url"
+                          placeholder="예시: https://www.youtube.com/embed/dQw4w9WgXcQ"
+                          value={videoUrl}
+                          onChange={(e) => setVideoUrl(e.target.value)}
+                          className="w-full bg-dark-bg border border-dark-border py-1.5 px-3 rounded-xs text-[10px] text-white focus:border-accent/50 focus:outline-none"
+                          id="form-video-url-input"
+                        />
+                        <p className="font-mono text-[8px] text-dark-muted mt-1 leading-relaxed">
+                          ※ 직접 업로드하지 않으실 경우, iframe용 "/embed/" 주소 형식을 사용해 주시면 외부 플레이어 연동이 가능합니다.
+                        </p>
+                      </div>
+                    </div>
+                  </details>
                 </div>
 
                 {/* Actions group */}

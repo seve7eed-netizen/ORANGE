@@ -163,14 +163,22 @@ export default function ProjectDetail({ project, onClose }: ProjectDetailProps) 
                 
                 {/* Embedded custom style video player frame */}
                 <div className="relative aspect-video w-full overflow-hidden border border-dark-border bg-black rounded-sm shadow-inner group">
-                  <iframe
-                    src={project.videoUrl}
-                    title={project.title}
-                    frameBorder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    allowFullScreen
-                    className="w-full h-full"
-                  />
+                  {project.videoUrl.startsWith('data:video/') || (!project.videoUrl.includes('youtube.com') && !project.videoUrl.includes('youtu.be') && !project.videoUrl.includes('vimeo.com')) ? (
+                    <video
+                      src={project.videoUrl}
+                      controls
+                      className="w-full h-full object-contain bg-black"
+                    />
+                  ) : (
+                    <iframe
+                      src={project.videoUrl}
+                      title={project.title}
+                      frameBorder="0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      allowFullScreen
+                      className="w-full h-full"
+                    />
+                  )}
                   
                   {/* Floating brand signature bottom right */}
                   <div className="absolute bottom-2 right-2 px-2.5 py-1 bg-dark-bg/80 border border-dark-border text-[9px] font-mono text-dark-muted rounded-xs select-none pointer-events-none group-hover:text-accent group-hover:border-accent/40 transition-colors">

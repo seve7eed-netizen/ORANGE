@@ -21,9 +21,19 @@ export default function App() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [activeFilter, setActiveFilter] = useState<CategoryFilter>('all');
+  const [scrollY, setScrollY] = useState(0);
 
   // References for scrolling
   const archiveRef = useRef<HTMLDivElement | null>(null);
+
+  // Scroll listener for landing splash scale effect
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrollY(window.scrollY);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   // Load from local Storage on boot, fallback to elegant preset
   useEffect(() => {
@@ -100,9 +110,6 @@ export default function App() {
 
   return (
     <div className="relative bg-dark-bg text-white min-h-screen flex flex-col font-sans selection:bg-accent selection:text-black">
-      {/* Subtle global vintage background grain */}
-      <div className="absolute inset-0 bg-grain opacity-[0.04] z-0 pointer-events-none select-none" />
-      
       {/* 1. Header Navigation Wrapper */}
       <Header
         currentTab={currentTab}
@@ -125,6 +132,7 @@ export default function App() {
           setCurrentTab('gallery');
           alert('관리자 모드가 해제되었습니다. 전시관 메인 화면으로 전환됩니다.');
         }}
+        scrollY={scrollY}
       />
 
       {/* 2. Main Page Body with Motion Wrapper */}
@@ -140,25 +148,28 @@ export default function App() {
               className="relative overflow-hidden"
             >
               {/* Seamless unified ambient background for both Hero and Gallery */}
-              <div className="absolute inset-0 z-0 pointer-events-none select-none">
+              <div 
+                className="absolute inset-0 z-0 pointer-events-none select-none transition-opacity duration-300"
+                style={{ opacity: Math.min(scrollY / 200, 1) }}
+              >
                 {/* Upper ambient glow in Hero area */}
-                <div className="absolute top-[8%] -right-[10%] w-[600px] h-[600px] rounded-full bg-accent/3 blur-[120px] mix-blend-screen" />
+                <div className="absolute top-[5%] -right-[15%] w-[700px] h-[700px] rounded-full bg-accent/[0.045] blur-[150px] mix-blend-screen" />
                 
                 {/* Middle ambient glow around transition/about area */}
-                <div className="absolute top-[35%] -left-[10%] w-[500px] h-[500px] rounded-full bg-accent/2 blur-[100px] mix-blend-screen" />
+                <div className="absolute top-[35%] -left-[15%] w-[600px] h-[600px] rounded-full bg-accent/[0.03] blur-[130px] mix-blend-screen" />
                 
                 {/* Lower ambient glow in ProjectGrid area */}
-                <div className="absolute bottom-[15%] -right-[10%] w-[650px] h-[650px] rounded-full bg-accent/3 blur-[130px] mix-blend-screen" />
+                <div className="absolute bottom-[10%] -right-[15%] w-[750px] h-[750px] rounded-full bg-accent/[0.04] blur-[160px] mix-blend-screen" />
                 
-                {/* Grid layout spanning from top to very bottom of the page */}
-                <div className="absolute inset-0 opacity-[0.012] bg-[linear-gradient(to_right,#808080_1px,transparent_1px),linear-gradient(to_bottom,#808080_1px,transparent_1px)] bg-[size:40px_40px]" />
+                {/* Vintage vignette/moody ambient overlay */}
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,transparent_10%,_var(--color-dark-bg)_80%)] opacity-80" />
                 
-                {/* Unified grain texture */}
-                <div className="absolute inset-0 bg-grain opacity-[0.045]" />
+                {/* Subtle minimalist grid structure */}
+                <div className="absolute inset-0 opacity-[0.008] bg-[linear-gradient(to_right,#808080_1px,transparent_1px),linear-gradient(to_bottom,#808080_1px,transparent_1px)] bg-[size:50px_50px]" />
               </div>
 
               {/* Introduction Banner */}
-              <Hero onScrollToArchive={handleScrollToArchive} onPillarClick={handlePillarClick} />
+              <Hero onScrollToArchive={handleScrollToArchive} onPillarClick={handlePillarClick} scrollY={scrollY} />
 
               {/* Central Exhibition grid */}
               <div ref={archiveRef} id="archive-section" className="relative z-10 bg-transparent">

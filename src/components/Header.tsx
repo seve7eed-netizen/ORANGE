@@ -8,6 +8,7 @@ interface HeaderProps {
   isAdmin: boolean;
   onAdminClick: () => void;
   onLogout: () => void;
+  scrollY?: number;
 }
 
 export default function Header({
@@ -15,7 +16,8 @@ export default function Header({
   setCurrentTab,
   isAdmin,
   onAdminClick,
-  onLogout
+  onLogout,
+  scrollY = 0
 }: HeaderProps) {
   const [time, setTime] = useState<string>('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -46,8 +48,19 @@ export default function Header({
     setMobileMenuOpen(false);
   };
 
+  // On landing tab, fade in header based on scroll position
+  const isLandingActive = currentTab === 'gallery';
+  const headerOpacity = isLandingActive ? Math.min(scrollY / 180, 1) : 1;
+  const isHeaderGhost = isLandingActive && scrollY < 12;
+
   return (
-    <header className="fixed top-0 left-0 w-full z-50 bg-dark-bg/85 backdrop-blur-md border-b border-dark-border py-4 px-6 md:px-12 transition-all">
+    <header 
+      style={{ 
+        opacity: headerOpacity,
+        pointerEvents: isHeaderGhost ? 'none' : 'auto' 
+      }}
+      className="fixed top-0 left-0 w-full z-50 bg-dark-bg/85 backdrop-blur-md border-b border-dark-border py-4 px-6 md:px-12 transition-all duration-300"
+    >
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         
         {/* Brand Identity / Logo */}
