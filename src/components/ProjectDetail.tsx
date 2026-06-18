@@ -39,7 +39,7 @@ export default function ProjectDetail({ project, onClose }: ProjectDetailProps) 
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 30, scale: 0.98 }}
           transition={{ type: 'spring', damping: 25, stiffness: 220 }}
-          className="relative bg-[#111111] border border-dark-border max-w-5xl w-full text-left rounded-sm overflow-hidden shadow-2xl pointer-events-auto z-10"
+          className="relative bg-dark-bg border border-dark-border max-w-5xl w-full text-left rounded-sm overflow-hidden shadow-2xl pointer-events-auto z-10"
         >
           
           {/* Main Top Header Controls */}

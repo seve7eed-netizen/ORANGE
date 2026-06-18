@@ -1,29 +1,36 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600;700&family=Syne:wght@600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600;700&family=Syne:wght@600;700;800&family=Syncopate:wght@700&display=swap');
+@import url('https://cdn.jsdelivr.net/gh/sun-typeface/SUIT/fonts/static/woff2/SUIT.css');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "SUIT", "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-syne: "Syne", sans-serif;
-  --font-outfit: "Outfit", sans-serif;
+  --font-outfit: "Outfit", "SUIT", sans-serif;
+  --font-syncopate: "Syncopate", sans-serif;
   --font-mono: "JetBrains Mono", monospace;
   
   --color-accent: #F37021;
   --color-accent-dim: rgba(243, 112, 33, 0.15);
-  --color-dark-bg: #0d0d0d;
-  --color-dark-card: #141414;
-  --color-dark-border: #222222;
-  --color-dark-text: #e5e5e5;
-  --color-dark-muted: #888888;
+  --color-dark-bg: #080d0d;
+  --color-dark-card: #0d1515;
+  --color-dark-border: #1a2828;
+  --color-dark-text: #e5e8e8;
+  --color-dark-muted: #7f9090;
 }
 
 /* Custom global styles for an immersive gallery feel */
 body {
   background-color: var(--color-dark-bg);
   color: var(--color-dark-text);
-  font-family: var(--font-sans);
+  font-family: "SUIT", var(--font-sans);
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Vintage Grain Texture Class */
+.bg-grain {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
 }
 
 /* Hidden scrollbars for crisp exhibition boards */

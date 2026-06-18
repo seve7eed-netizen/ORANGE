@@ -179,7 +179,7 @@ export default function AdminPanel({
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="max-w-md w-full p-8 border border-dark-border bg-[#121212] rounded-sm text-center shadow-2xl relative overflow-hidden"
+          className="max-w-md w-full p-8 border border-dark-border bg-dark-bg rounded-sm text-center shadow-2xl relative overflow-hidden"
         >
           <div className="absolute top-0 left-0 w-full h-[3px] bg-accent" />
           

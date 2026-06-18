@@ -6,10 +6,16 @@ import { Eye, Search, Grid, LayoutGrid, Calendar } from 'lucide-react';
 interface ProjectGridProps {
   projects: Project[];
   onProjectClick: (project: Project) => void;
+  activeFilter: CategoryFilter;
+  setActiveFilter: (filter: CategoryFilter) => void;
 }
 
-export default function ProjectGrid({ projects, onProjectClick }: ProjectGridProps) {
-  const [activeFilter, setActiveFilter] = useState<CategoryFilter>('all');
+export default function ProjectGrid({ 
+  projects, 
+  onProjectClick,
+  activeFilter,
+  setActiveFilter
+}: ProjectGridProps) {
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   const categories: { value: CategoryFilter; label: string }[] = [
@@ -32,7 +38,7 @@ export default function ProjectGrid({ projects, onProjectClick }: ProjectGridPro
   });
 
   return (
-    <section className="py-24 px-6 md:px-12 bg-dark-bg" id="archive-section">
+    <section className="py-24 px-6 md:px-12 bg-transparent" id="archive-section">
       <div className="max-w-7xl mx-auto">
         
         {/* Section title & Header */}

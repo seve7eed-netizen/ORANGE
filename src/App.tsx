@@ -11,7 +11,7 @@ import ProjectDetail from './components/ProjectDetail';
 import AdminPanel from './components/AdminPanel';
 import Footer from './components/Footer';
 import { initialProjects } from './initialProjects';
-import { Project } from './types';
+import { Project, CategoryFilter } from './types';
 import { AnimatePresence, motion } from 'motion/react';
 import { Sliders, Play, Settings, Landmark, ShieldCheck } from 'lucide-react';
 
@@ -20,6 +20,7 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<string>('gallery'); // 'gallery', 'services', 'philosophy', 'admin'
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<CategoryFilter>('all');
 
   // References for scrolling
   const archiveRef = useRef<HTMLDivElement | null>(null);
@@ -92,8 +93,15 @@ export default function App() {
     }, 100);
   };
 
+  const handlePillarClick = (category: 'photography' | 'videography') => {
+    setActiveFilter(category);
+    handleScrollToArchive();
+  };
+
   return (
-    <div className="bg-[#0d0d0d] text-white min-h-screen flex flex-col font-sans selection:bg-accent selection:text-black">
+    <div className="relative bg-dark-bg text-white min-h-screen flex flex-col font-sans selection:bg-accent selection:text-black">
+      {/* Subtle global vintage background grain */}
+      <div className="absolute inset-0 bg-grain opacity-[0.04] z-0 pointer-events-none select-none" />
       
       {/* 1. Header Navigation Wrapper */}
       <Header
@@ -102,6 +110,7 @@ export default function App() {
           setCurrentTab(tab);
           // If switching to gallery, smooth scroll to gallery anchor automatically
           if (tab === 'gallery') {
+            setActiveFilter('all');
             setTimeout(() => {
               document.getElementById('archive-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }, 100);
@@ -119,7 +128,7 @@ export default function App() {
       />
 
       {/* 2. Main Page Body with Motion Wrapper */}
-      <main className="flex-grow pt-16">
+      <main className="flex-grow pt-16 font-sans">
         <AnimatePresence mode="wait">
           {currentTab === 'gallery' && (
             <motion.div
@@ -128,15 +137,36 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.5 }}
+              className="relative overflow-hidden"
             >
+              {/* Seamless unified ambient background for both Hero and Gallery */}
+              <div className="absolute inset-0 z-0 pointer-events-none select-none">
+                {/* Upper ambient glow in Hero area */}
+                <div className="absolute top-[8%] -right-[10%] w-[600px] h-[600px] rounded-full bg-accent/3 blur-[120px] mix-blend-screen" />
+                
+                {/* Middle ambient glow around transition/about area */}
+                <div className="absolute top-[35%] -left-[10%] w-[500px] h-[500px] rounded-full bg-accent/2 blur-[100px] mix-blend-screen" />
+                
+                {/* Lower ambient glow in ProjectGrid area */}
+                <div className="absolute bottom-[15%] -right-[10%] w-[650px] h-[650px] rounded-full bg-accent/3 blur-[130px] mix-blend-screen" />
+                
+                {/* Grid layout spanning from top to very bottom of the page */}
+                <div className="absolute inset-0 opacity-[0.012] bg-[linear-gradient(to_right,#808080_1px,transparent_1px),linear-gradient(to_bottom,#808080_1px,transparent_1px)] bg-[size:40px_40px]" />
+                
+                {/* Unified grain texture */}
+                <div className="absolute inset-0 bg-grain opacity-[0.045]" />
+              </div>
+
               {/* Introduction Banner */}
-              <Hero onScrollToArchive={handleScrollToArchive} />
+              <Hero onScrollToArchive={handleScrollToArchive} onPillarClick={handlePillarClick} />
 
               {/* Central Exhibition grid */}
-              <div ref={archiveRef} id="archive-section">
+              <div ref={archiveRef} id="archive-section" className="relative z-10 bg-transparent">
                 <ProjectGrid
                   projects={projects}
                   onProjectClick={(p) => setSelectedProject(p)}
+                  activeFilter={activeFilter}
+                  setActiveFilter={setActiveFilter}
                 />
               </div>
             </motion.div>
