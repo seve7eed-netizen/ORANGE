@@ -1,0 +1,6 @@
+{
+  "name": "Orange: ON THE TRACK",
+  "description": "The premium digital archive and exhibition gallery of Orange (Kim Jang-seop), specializing in videography, photography, editing, and retouching.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
