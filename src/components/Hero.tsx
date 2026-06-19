@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { ChevronDown } from 'lucide-react';
 
@@ -10,6 +10,7 @@ interface HeroProps {
 
 export default function Hero({ onScrollToArchive, onPillarClick, scrollY = 0 }: HeroProps) {
   const [isMobile, setIsMobile] = useState(false);
+  const philosophyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const updateSize = () => {
@@ -20,16 +21,9 @@ export default function Hero({ onScrollToArchive, onPillarClick, scrollY = 0 }: 
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
-  const scrollRange = 400;
-  const progress = Math.min(scrollY / scrollRange, 1);
-  
-  // High-fidelity responsive starter scale
-  const baseScale = isMobile ? 1.35 : 1.75;
-  const currentScale = baseScale - (baseScale - 1.0) * progress;
-
-  // Slowly reveal other branding content on scroll past critical threshold
-  const detailOpacity = Math.max(0, Math.min((scrollY - 40) / 240, 1));
-  const pointerEventsClass = detailOpacity < 0.1 ? 'none' : 'auto';
+  const handleScrollToPhilosophy = () => {
+    philosophyRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -47,28 +41,30 @@ export default function Hero({ onScrollToArchive, onPillarClick, scrollY = 0 }: 
     visible: { 
       opacity: 1, 
       y: 0,
-      transition: { duration: 1.5, ease: [0.16, 1, 0.3, 1] }
+      transition: { duration: 1.2, ease: [0.16, 1, 0.3, 1] }
+    }
+  };
+
+  const logoVariants = {
+    hidden: { opacity: 0, scale: 1 },
+    visible: {
+      opacity: 1,
+      scale: 1,
+      transition: { duration: 2.0, ease: [0.16, 1, 0.3, 1] }
     }
   };
 
   return (
-    <section className="relative min-h-screen flex flex-col items-center justify-center pt-24 pb-16 px-4 md:px-8 select-none">
+    <div className="flex flex-col select-none w-full">
       
-      <motion.div 
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-        className="relative z-10 w-full max-w-5xl mx-auto flex flex-col items-center flex-1 justify-center"
-      >
+      {/* ==================== PAGE 1: IMMERSIVE LOGO INTRO COVER (100dvh) ==================== */}
+      <section className="relative -mt-16 h-[100dvh] w-full flex flex-col items-center justify-center bg-black px-4 md:px-8 overflow-hidden z-20">
         
-        {/* ==================== THE GOLDEN-RATIO RUNNING TRACK MASTER COMPOSITION (Z-1) ==================== */}
         <motion.div 
-          variants={itemVariants} 
-          style={{ 
-            scale: currentScale,
-            transformOrigin: 'center center'
-          }}
-          className="w-full max-w-4xl flex flex-col items-center mb-10 sm:mb-12 uppercase relative z-1 transition-transform duration-75 ease-out"
+          initial="hidden"
+          animate="visible"
+          variants={logoVariants}
+          className="w-full max-w-4xl flex flex-col items-center uppercase relative"
         >
           {/* Running Track SVG - Proportioned exactly to the Golden Ratio (890 x 550) */}
           <div className="w-full flex items-center justify-center relative">
@@ -190,69 +186,99 @@ export default function Hero({ onScrollToArchive, onPillarClick, scrollY = 0 }: 
             </svg>
           </div>
         </motion.div>
-        {/* ==================== END OF COMPOSITION ==================== */}
-        
-        {/* Philosophy Intro & Description (Placed cleanly at relative z-10 for pixel-perfect readability) */}
-        <motion.div 
-          variants={itemVariants}
-          style={{ opacity: detailOpacity, pointerEvents: pointerEventsClass as any }}
-          className="max-w-2xl flex flex-col items-center text-center px-4 relative z-10 transition-opacity duration-300"
-        >
-          <blockquote className="font-sans text-base sm:text-lg text-white/90 italic font-medium leading-relaxed tracking-wide mb-6">
-            "예정된 계획대로 진행되고 있다. 올바른 방향으로 정상 궤도에 올라와 있다."
-          </blockquote>
-          <p className="font-sans text-xs sm:text-sm text-dark-muted leading-relaxed tracking-wider font-light mb-12 sm:mb-16">
-            Orange는 촬영, 영상 제작, 편집, 보정의 유기적인 결합을 통해<br className="hidden sm:inline" />
-            브랜드와 사람이 가진 내러티브를 가장 순수하고 깊이 있는 방향으로 이끌어가는 크리에이터, 김장섭입니다.
-          </p>
-        </motion.div>
 
-        {/* Work pillars shortcuts (Placed cleanly at relative z-10) */}
-        <motion.div 
-          variants={itemVariants}
-          style={{ opacity: detailOpacity, pointerEvents: pointerEventsClass as any }}
-          className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-2xl mb-12 sm:mb-16 relative z-10 transition-opacity duration-300"
+        {/* Dynamic down arrow to scroll into the journey */}
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: [0, 0.7, 0.4] }}
+          transition={{ delay: 1.6, duration: 1.2 }}
+          onClick={handleScrollToPhilosophy}
+          className="absolute bottom-12 flex flex-col items-center gap-2 cursor-pointer text-dark-muted hover:text-accent transition-colors duration-300 z-10"
         >
-          {[
-            { tag: 'PHOTOGRAPHY' as const, title: '사진 촬영', category: 'photography' as const },
-            { tag: 'VIDEOGRAPHY' as const, title: '영상 촬영', category: 'videography' as const }
-          ].map((pillar, idx) => (
-            <div 
-              key={idx}
-              className="group relative p-4 border border-dark-border bg-dark-card/30 backdrop-blur-sm rounded-sm text-center sm:text-left hover:border-accent/45 transition-all duration-500 hover:bg-dark-card/65 cursor-pointer"
-              onClick={() => onPillarClick?.(pillar.category)}
-            >
-              <div className="absolute top-2 right-2 font-mono text-[9px] text-accent font-semibold opacity-30 group-hover:opacity-100 transition-opacity">
-                0{idx + 1}
-              </div>
-              <h3 className="font-syne text-xs text-white opacity-40 group-hover:opacity-100 group-hover:text-accent font-extrabold tracking-[0.15em] transition-all">
-                {pillar.tag}
-              </h3>
-              <p className="font-sans text-sm font-medium text-dark-muted group-hover:text-white transition-colors mt-1.5">
-                {pillar.title}
-              </p>
-            </div>
-          ))}
-        </motion.div>
-
-        {/* Scroll indicator (Placed cleanly at relative z-10) */}
-        <motion.div 
-          variants={itemVariants}
-          style={{ opacity: detailOpacity, pointerEvents: pointerEventsClass as any }}
-          className="mt-4 flex flex-col items-center gap-2 cursor-pointer text-dark-muted hover:text-accent transition-colors duration-300 relative z-10 transition-opacity duration-300"
-          onClick={onScrollToArchive}
-          id="hero-scroll-indicator"
-        >
-          <span className="font-mono text-[9px] tracking-[0.2em] font-bold">ENTER EXHIBITION</span>
+          <span className="font-mono text-[8px] tracking-[0.25em] font-semibold text-dark-muted">SCROLL FOR JOURNEY</span>
           <motion.div
-            animate={{ y: [0, 6, 0] }}
-            transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+            animate={{ y: [0, 5, 0] }}
+            transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
           >
-            <ChevronDown size={14} className="text-accent" />
+            <ChevronDown size={14} className="text-accent/60" />
           </motion.div>
         </motion.div>
 
-      </motion.div>
-    </section>
+      </section>
+
+      {/* ==================== PAGE 2: BRAND PHILOSOPHY & WORK PILLARS ==================== */}
+      <section 
+        ref={philosophyRef} 
+        className="relative min-h-screen w-full flex flex-col items-center justify-center py-28 px-4 md:px-8 z-10"
+      >
+        <motion.div 
+          variants={containerVariants}
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-120px" }}
+          className="relative w-full max-w-4xl mx-auto flex flex-col items-center justify-center text-center"
+        >
+          
+          {/* Philosophy Intro & Description */}
+          <motion.div 
+            variants={itemVariants}
+            className="max-w-2xl flex flex-col items-center text-center px-4 mb-10"
+          >
+            <blockquote className="font-sans text-base sm:text-lg text-white/90 italic font-medium leading-relaxed tracking-wide mb-6">
+              "예정된 계획대로 진행되고 있다. 올바른 방향으로 정상 궤도에 올라와 있다."
+            </blockquote>
+            <p className="font-sans text-xs sm:text-sm text-dark-muted leading-relaxed tracking-wider font-light mb-8">
+              Orange는 촬영, 영상 제작, 편집, 보정의 유기적인 결합을 통해<br className="hidden sm:inline" />
+              브랜드와 사람이 가진 내러티브를 가장 순수하고 깊이 있는 방향으로 이끌어가는 크리에이터, 김장섭입니다.
+            </p>
+          </motion.div>
+
+          {/* Work pillars shortcuts */}
+          <motion.div 
+            variants={itemVariants}
+            className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-2xl mb-14"
+          >
+            {[
+              { tag: 'PHOTOGRAPHY' as const, title: '사진 촬영', category: 'photography' as const },
+              { tag: 'VIDEOGRAPHY' as const, title: '영상 촬영', category: 'videography' as const }
+            ].map((pillar, idx) => (
+              <div 
+                key={idx}
+                className="group relative p-5 border border-dark-border bg-dark-card/30 backdrop-blur-sm rounded-sm text-center sm:text-left hover:border-accent/45 transition-all duration-500 hover:bg-dark-card/65 cursor-pointer"
+                onClick={() => onPillarClick?.(pillar.category)}
+              >
+                <div className="absolute top-2 right-2 font-mono text-[9px] text-accent font-semibold opacity-30 group-hover:opacity-100 transition-opacity">
+                  0{idx + 1}
+                </div>
+                <h3 className="font-syne text-xs text-white opacity-40 group-hover:opacity-100 group-hover:text-accent font-extrabold tracking-[0.15em] transition-all">
+                  {pillar.tag}
+                </h3>
+                <p className="font-sans text-sm font-medium text-dark-muted group-hover:text-white transition-colors mt-1.5">
+                  {pillar.title}
+                </p>
+              </div>
+            ))}
+          </motion.div>
+
+          {/* Scroll block to reach portfolio list */}
+          <motion.div 
+            variants={itemVariants}
+            className="flex flex-col items-center gap-2 cursor-pointer text-dark-muted hover:text-accent transition-colors duration-300"
+            onClick={onScrollToArchive}
+            id="hero-scroll-indicator"
+          >
+            <span className="font-mono text-[9px] tracking-[0.2em] font-bold">ENTER EXHIBITION</span>
+            <motion.div
+              animate={{ y: [0, 6, 0] }}
+              transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+            >
+              <ChevronDown size={14} className="text-accent" />
+            </motion.div>
+          </motion.div>
+
+        </motion.div>
+      </section>
+
+    </div>
   );
 }
