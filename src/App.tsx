@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import Hero from './components/Hero';
+import Philosophy from './components/Philosophy';
 import ProjectGrid from './components/ProjectGrid';
 import ProjectDetail from './components/ProjectDetail';
 import AdminPanel from './components/AdminPanel';
@@ -17,7 +18,7 @@ import { Sliders, Play, Settings, Landmark, ShieldCheck } from 'lucide-react';
 
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [currentTab, setCurrentTab] = useState<string>('gallery'); // 'gallery', 'services', 'philosophy', 'admin'
+  const [currentTab, setCurrentTab] = useState<string>('home'); // 'home', 'philosophy', 'gallery', 'admin'
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [activeFilter, setActiveFilter] = useState<CategoryFilter>('all');
@@ -25,6 +26,7 @@ export default function App() {
 
   // References for scrolling
   const archiveRef = useRef<HTMLDivElement | null>(null);
+  const isScrollingRef = useRef(false);
 
   // Scroll listener for landing splash scale effect
   useEffect(() => {
@@ -34,6 +36,41 @@ export default function App() {
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  // Scroll observer to update active header menu item as visitor scrolls
+  useEffect(() => {
+    if (currentTab === 'admin') return;
+
+    const handleScrollState = () => {
+      const homeEl = document.getElementById('section-home');
+      const philEl = document.getElementById('section-philosophy');
+      const galleryEl = document.getElementById('section-gallery');
+
+      if (!homeEl || !philEl || !galleryEl) return;
+
+      const scrollPosition = window.scrollY + window.innerHeight * 0.4;
+
+      const philTop = philEl.offsetTop;
+      const galleryTop = galleryEl.offsetTop;
+
+      if (scrollPosition >= galleryTop) {
+        if (!isScrollingRef.current) {
+          setCurrentTab('gallery');
+        }
+      } else if (scrollPosition >= philTop) {
+        if (!isScrollingRef.current) {
+          setCurrentTab('philosophy');
+        }
+      } else {
+        if (!isScrollingRef.current) {
+          setCurrentTab('home');
+        }
+      }
+    };
+
+    window.addEventListener('scroll', handleScrollState);
+    return () => window.removeEventListener('scroll', handleScrollState);
+  }, [currentTab]);
 
   // Load from local Storage on boot, fallback to elegant preset
   useEffect(() => {
@@ -92,20 +129,57 @@ export default function App() {
     updatePersistedData(imported);
   };
 
+  const scrollToSection = (sectionId: string) => {
+    const el = document.getElementById(`section-${sectionId}`);
+    if (el) {
+      isScrollingRef.current = true;
+      setCurrentTab(sectionId);
+      
+      const headerOffset = 64; // Height of the sticky header
+      const elementPosition = el.getBoundingClientRect().top + window.scrollY;
+      const offsetPosition = elementPosition - headerOffset;
+
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: 'smooth'
+      });
+
+      // Keep tracking active scroll state to avoid flip during transit animation
+      setTimeout(() => {
+        isScrollingRef.current = false;
+      }, 850);
+    }
+  };
+
+  const handleTabChange = (tab: string) => {
+    if (tab === 'admin') {
+      setCurrentTab('admin');
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      return;
+    }
+
+    if (currentTab === 'admin') {
+      setCurrentTab(tab);
+      setTimeout(() => {
+        scrollToSection(tab);
+      }, 80);
+    } else {
+      scrollToSection(tab);
+    }
+  };
+
   const handleScrollToArchive = () => {
-    setCurrentTab('gallery');
-    setTimeout(() => {
-      if (archiveRef.current) {
-        archiveRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      } else {
-        document.getElementById('archive-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }, 100);
+    setActiveFilter('all');
+    scrollToSection('gallery');
   };
 
   const handlePillarClick = (category: 'photography' | 'videography') => {
     setActiveFilter(category);
-    handleScrollToArchive();
+    scrollToSection('gallery');
+  };
+
+  const handleEnterJournal = () => {
+    scrollToSection('philosophy');
   };
 
   return (
@@ -113,24 +187,14 @@ export default function App() {
       {/* 1. Header Navigation Wrapper */}
       <Header
         currentTab={currentTab}
-        setCurrentTab={(tab) => {
-          setCurrentTab(tab);
-          // If switching to gallery, smooth scroll to gallery anchor automatically
-          if (tab === 'gallery') {
-            setActiveFilter('all');
-            setTimeout(() => {
-              document.getElementById('archive-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 100);
-          } else {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }
-        }}
+        setCurrentTab={handleTabChange}
         isAdmin={isAdminLoggedIn}
         onAdminClick={() => setCurrentTab('admin')}
         onLogout={() => {
           setIsAdminLoggedIn(false);
-          setCurrentTab('gallery');
-          alert('관리자 모드가 해제되었습니다. 전시관 메인 화면으로 전환됩니다.');
+          setCurrentTab('home');
+          window.scrollTo({ top: 0, behavior: 'instant' });
+          alert('관리자 모드가 해제되었습니다. 메인 화면으로 전환됩니다.');
         }}
         scrollY={scrollY}
       />
@@ -138,52 +202,7 @@ export default function App() {
       {/* 2. Main Page Body with Motion Wrapper */}
       <main className="flex-grow pt-16 font-sans">
         <AnimatePresence mode="wait">
-          {currentTab === 'gallery' && (
-            <motion.div
-              key="gallery-screen"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.5 }}
-              className="relative overflow-hidden"
-            >
-              {/* Seamless unified ambient background for both Hero and Gallery */}
-              <div 
-                className="absolute inset-0 z-0 pointer-events-none select-none transition-opacity duration-300"
-                style={{ opacity: Math.min(scrollY / 200, 1) }}
-              >
-                {/* Upper ambient glow in Hero area */}
-                <div className="absolute top-[5%] -right-[15%] w-[700px] h-[700px] rounded-full bg-accent/[0.045] blur-[150px] mix-blend-screen" />
-                
-                {/* Middle ambient glow around transition/about area */}
-                <div className="absolute top-[35%] -left-[15%] w-[600px] h-[600px] rounded-full bg-accent/[0.03] blur-[130px] mix-blend-screen" />
-                
-                {/* Lower ambient glow in ProjectGrid area */}
-                <div className="absolute bottom-[10%] -right-[15%] w-[750px] h-[750px] rounded-full bg-accent/[0.04] blur-[160px] mix-blend-screen" />
-                
-                {/* Vintage vignette/moody ambient overlay */}
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,transparent_10%,_var(--color-dark-bg)_80%)] opacity-80" />
-                
-                {/* Subtle minimalist grid structure */}
-                <div className="absolute inset-0 opacity-[0.008] bg-[linear-gradient(to_right,#808080_1px,transparent_1px),linear-gradient(to_bottom,#808080_1px,transparent_1px)] bg-[size:50px_50px]" />
-              </div>
-
-              {/* Introduction Banner */}
-              <Hero onScrollToArchive={handleScrollToArchive} onPillarClick={handlePillarClick} scrollY={scrollY} />
-
-              {/* Central Exhibition grid */}
-              <div ref={archiveRef} id="archive-section" className="relative z-10 bg-transparent">
-                <ProjectGrid
-                  projects={projects}
-                  onProjectClick={(p) => setSelectedProject(p)}
-                  activeFilter={activeFilter}
-                  setActiveFilter={setActiveFilter}
-                />
-              </div>
-            </motion.div>
-          )}
-
-          {currentTab === 'admin' && (
+          {currentTab === 'admin' ? (
             <motion.div
               key="admin-screen"
               initial={{ opacity: 0, y: 15 }}
@@ -201,6 +220,55 @@ export default function App() {
                 isAdminLoggedIn={isAdminLoggedIn}
                 setIsAdminLoggedIn={setIsAdminLoggedIn}
               />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="main-ambient-container"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.5 }}
+              className="relative w-full flex flex-col"
+            >
+              {/* Seamless unified ambient background for continuous scroll content */}
+              <div className="absolute inset-0 z-0 pointer-events-none select-none">
+                {/* Upper ambient glow */}
+                <div className="absolute top-[5%] -right-[15%] w-[700px] h-[700px] rounded-full bg-accent/[0.045] blur-[150px] mix-blend-screen" />
+                
+                {/* Middle ambient glow */}
+                <div className="absolute top-[35%] -left-[15%] w-[600px] h-[600px] rounded-full bg-accent/[0.030] blur-[130px] mix-blend-screen" />
+                
+                {/* Lower ambient glow in ProjectGrid area */}
+                <div className="absolute bottom-[10%] -right-[15%] w-[750px] h-[750px] rounded-full bg-accent/[0.04] blur-[160px] mix-blend-screen" />
+                
+                {/* Vintage vignette/moody ambient overlay */}
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,transparent_10%,_var(--color-dark-bg)_80%)] opacity-80" />
+                
+                {/* Subtle minimalist grid structure */}
+                <div className="absolute inset-0 opacity-[0.008] bg-[linear-gradient(to_right,#808080_1px,transparent_1px),linear-gradient(to_bottom,#808080_1px,transparent_1px)] bg-[size:50px_50px]" />
+              </div>
+
+              {/* Section 1: HOME */}
+              <div id="section-home" className="relative z-10 w-full">
+                <Hero onEnter={handleEnterJournal} />
+              </div>
+
+              {/* Section 2: PHILOSOPHY */}
+              <div id="section-philosophy" className="relative z-10 w-full border-t border-dark-border/40">
+                <Philosophy onPillarClick={handlePillarClick} />
+              </div>
+
+              {/* Section 3: GALLERY/EXHIBITION */}
+              <div id="section-gallery" className="relative z-10 w-full border-t border-dark-border/40">
+                <div id="archive-section" className="relative bg-transparent">
+                  <ProjectGrid
+                    projects={projects}
+                    onProjectClick={(p) => setSelectedProject(p)}
+                    activeFilter={activeFilter}
+                    setActiveFilter={setActiveFilter}
+                  />
+                </div>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

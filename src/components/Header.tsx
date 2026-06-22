@@ -40,6 +40,8 @@ export default function Header({
   }, []);
 
   const menuItems = [
+    { id: 'home', label: 'HOME' },
+    { id: 'philosophy', label: 'PHILOSOPHY' },
     { id: 'gallery', label: 'EXHIBITION ARCHIVE' }
   ];
 
@@ -49,7 +51,7 @@ export default function Header({
   };
 
   // On landing tab, fade in header based on scroll position
-  const isLandingActive = currentTab === 'gallery';
+  const isLandingActive = currentTab === 'home';
   const headerOpacity = isLandingActive ? Math.min(scrollY / 180, 1) : 1;
   const isHeaderGhost = isLandingActive && scrollY < 12;
 
@@ -66,7 +68,7 @@ export default function Header({
         {/* Brand Identity / Logo */}
         <div 
           className="flex flex-col cursor-pointer select-none group"
-          onClick={() => handleNavClick('gallery')}
+          onClick={() => handleNavClick('home')}
         >
           <div className="flex items-center gap-1.5">
             <span className="font-syne text-2xl font-black tracking-wide text-white group-hover:text-accent transition-colors duration-300">
