@@ -40,6 +40,7 @@ export default function AdminPanel({
   const [coverImage, setCoverImage] = useState('');
   const [additionalImagesRaw, setAdditionalImagesRaw] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
+  const [videoUrls, setVideoUrls] = useState<string[]>([]);
   const [featured, setFeatured] = useState(false);
 
   // Direct File Upload & Representative selection states
@@ -129,6 +130,7 @@ export default function AdminPanel({
     setCoverImage(p.coverImage);
     setAdditionalImagesRaw(p.additionalImages.join(', '));
     setVideoUrl(p.videoUrl || '');
+    setVideoUrls(p.videoUrls || (p.videoUrl ? [p.videoUrl] : []));
     setFeatured(p.featured || false);
 
     // Initialize list with project resources
@@ -157,14 +159,17 @@ export default function AdminPanel({
       });
     }
 
-    if (p.videoUrl) {
-      list.push({
-        id: 'video_' + Date.now(),
-        url: p.videoUrl,
-        name: '프로젝트 비디오 (Embedded/Uploaded)',
-        type: 'video'
-      });
-    }
+    const vUrls = p.videoUrls || (p.videoUrl ? [p.videoUrl] : []);
+    vUrls.forEach((vUrl, idx) => {
+      if (vUrl) {
+        list.push({
+          id: `video_${idx}_${Date.now()}`,
+          url: vUrl,
+          name: vUrls.length > 1 ? `프로젝트 비디오 #${idx + 1}` : '프로젝트 비디오 (Embedded/Uploaded)',
+          type: 'video'
+        });
+      }
+    });
 
     setUploadedFiles(list);
     setRepresentativeId(repId);
@@ -182,6 +187,7 @@ export default function AdminPanel({
     setCoverImage('');
     setAdditionalImagesRaw('');
     setVideoUrl('');
+    setVideoUrls([]);
     setFeatured(false);
     setUploadedFiles([]);
     setRepresentativeId(null);
@@ -418,12 +424,15 @@ export default function AdminPanel({
       finalAddImages = uploadedFiles
         .filter(f => f.type === 'image' && f.url !== finalCoverImage)
         .map(f => f.url);
+    }
 
-      // Extract video if any
-      const videoItem = uploadedFiles.find(f => f.type === 'video');
-      if (videoItem) {
-        finalVideoUrl = videoItem.url;
-      }
+    // Gather all unique video URLs from uploadedFiles and manually typed video fields
+    const fileVideos = uploadedFiles.filter(f => f.type === 'video').map(f => f.url);
+    const manualVideos = [videoUrl, ...videoUrls].map(v => v.trim()).filter(v => v.length > 0);
+    const uniqueVideos = Array.from(new Set([...fileVideos, ...manualVideos]));
+
+    if (uniqueVideos.length > 0) {
+      finalVideoUrl = uniqueVideos[0];
     }
 
     if (!title || !client || !finalCoverImage) {
@@ -453,6 +462,7 @@ export default function AdminPanel({
       coverImage: finalCoverImage,
       additionalImages: finalAddImages,
       videoUrl: finalVideoUrl || undefined,
+      videoUrls: uniqueVideos.length > 0 ? uniqueVideos : undefined,
       featured
     };
 
@@ -904,27 +914,76 @@ export default function AdminPanel({
                   )}
                 </div>
 
-                {/* Direct Video Link Field (High Visibility) */}
-                <div className="border border-dark-border bg-dark-bg/20 p-4 rounded-sm flex flex-col gap-2">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Video size={13} className="text-accent" />
-                    <span className="font-mono text-[9px] text-accent uppercase tracking-widest block font-black">
-                      [ VIDEO STREAMING LINK // 동영상 링크 추가 ]
-                    </span>
+                {/* Direct Video Link Field (High Visibility, Supports Multiple Links) */}
+                <div className="border border-dark-border bg-dark-bg/20 p-4 rounded-sm flex flex-col gap-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <Video size={13} className="text-accent" />
+                      <span className="font-mono text-[9px] text-accent uppercase tracking-widest block font-black">
+                        [ VIDEO STREAMING LINKS // 동영상 링크 관리 ]
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setVideoUrls([...videoUrls, ''])}
+                      className="flex items-center gap-1.5 px-2.5 py-1 bg-accent/10 border border-accent/30 rounded-xs text-[10px] text-accent font-mono font-bold uppercase hover:bg-accent/20 transition-all cursor-pointer"
+                    >
+                      <Plus size={10} />
+                      [ ADD LINK // 링크 추가 ]
+                    </button>
                   </div>
-                  <label className="font-mono text-[9.5px] text-white uppercase tracking-wider block">
-                    YOUTUBE OR VIMEO URL (유튜브 또는 비메오 동영상 주소)
-                  </label>
-                  <input
-                    type="url"
-                    placeholder="예시: https://www.youtube.com/watch?v=dQw4w9WgXcQ 또는 https://youtu.be/..."
-                    value={videoUrl}
-                    onChange={(e) => setVideoUrl(e.target.value)}
-                    className="w-full bg-dark-bg border border-dark-border py-2 px-3 rounded-xs text-xs text-white placeholder-dark-muted focus:border-accent/50 focus:outline-none"
-                    id="form-video-url-input-new"
-                  />
+
+                  {/* Main Video (First Input) */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-mono text-[9.5px] text-white uppercase tracking-wider block">
+                      MAIN VIDEO PATH // 기본 동영상 주소 (필수 아님)
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="예시: https://www.youtube.com/watch?v=dQw4w9WgXcQ 또는 구글 드라이브, Dropbox 공유 링크"
+                      value={videoUrl}
+                      onChange={(e) => setVideoUrl(e.target.value)}
+                      className="w-full bg-dark-bg border border-dark-border py-2 px-3 rounded-xs text-xs text-white placeholder-dark-muted focus:border-accent/50 focus:outline-none"
+                      id="form-video-url-input-main"
+                    />
+                  </div>
+
+                  {/* Additional Videos List */}
+                  {videoUrls.map((url, idx) => (
+                    <div key={idx} className="flex flex-col gap-1.5 p-3 border border-dark-border/40 bg-dark-bg/10 rounded-xs relative">
+                      <div className="flex items-center justify-between">
+                        <label className="font-mono text-[9.5px] text-white/80 uppercase tracking-wider">
+                          ADDITIONAL VIDEO #{idx + 1} // 추가 동영상 링크 {idx + 1}
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = [...videoUrls];
+                            updated.splice(idx, 1);
+                            setVideoUrls(updated);
+                          }}
+                          className="text-dark-muted hover:text-red-400 transition-colors cursor-pointer"
+                          title="삭제"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                      <input
+                        type="url"
+                        placeholder="예시: https://youtu.be/... 또는 Dropbox, 구글 드라이브 링크"
+                        value={url}
+                        onChange={(e) => {
+                          const updated = [...videoUrls];
+                          updated[idx] = e.target.value;
+                          setVideoUrls(updated);
+                        }}
+                        className="w-full bg-dark-bg border border-dark-border/60 py-1.5 px-3 rounded-xs text-xs text-white placeholder-dark-muted focus:border-accent/50 focus:outline-none"
+                      />
+                    </div>
+                  ))}
+
                   <p className="font-sans text-[10.5px] text-dark-muted leading-relaxed">
-                    ※ 전시할 동영상(유튜브/비메오 등)의 <strong>일반 웹 주소를 그대로 복사하여 입력</strong>해 주세요. 갤러리 뷰어에서 <strong>비디오 플레이어로 자동 변환</strong>되어 즉시 감상할 수 있습니다.
+                    ※ 전시할 동영상(유튜브, 비메오, 구글 드라이브, Dropbox)의 <strong>일반 웹 주소를 그대로 복사하여 입력</strong>해 주세요. 뷰어에 <strong>동영상 플레이어들이 순서대로 자동 생성</strong>됩니다.
                   </p>
                 </div>
 

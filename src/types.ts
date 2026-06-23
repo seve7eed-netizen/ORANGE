@@ -9,6 +9,7 @@ export interface Project {
   coverImage: string;
   additionalImages: string[];
   videoUrl?: string; // Optional embedded video link (YouTube, Vimeo, or direct link)
+  videoUrls?: string[]; // Optional multiple video links
   category: 'photography' | 'videography';
   featured?: boolean;
 }

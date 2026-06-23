@@ -153,7 +153,7 @@ export default function ProjectDetail({ project, onClose }: ProjectDetailProps) 
             </div>
 
             {/* Video Segment (If Provided) */}
-            {project.videoUrl && (
+            {((project.videoUrls && project.videoUrls.length > 0) || project.videoUrl) && (
               <div className="mb-12">
                 <div className="flex items-center gap-2 mb-4">
                   <Video size={14} className="text-accent" />
@@ -162,29 +162,43 @@ export default function ProjectDetail({ project, onClose }: ProjectDetailProps) 
                   </h4>
                 </div>
                 
-                {/* Embedded custom style video player frame */}
-                <div className="relative aspect-video w-full overflow-hidden border border-dark-border bg-black rounded-sm shadow-inner group">
-                  {!shouldUseIframe(project.videoUrl) ? (
-                    <video
-                      src={getDirectVideoUrl(project.videoUrl)}
-                      controls
-                      className="w-full h-full object-contain bg-black"
-                    />
-                  ) : (
-                    <iframe
-                      src={getEmbedUrl(project.videoUrl)}
-                      title={project.title}
-                      frameBorder="0"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                      allowFullScreen
-                      className="w-full h-full"
-                    />
-                  )}
-                  
-                  {/* Floating brand signature bottom right */}
-                  <div className="absolute bottom-2 right-2 px-2.5 py-1 bg-dark-bg/80 border border-dark-border text-[9px] font-mono text-dark-muted rounded-xs select-none pointer-events-none group-hover:text-accent group-hover:border-accent/40 transition-colors">
-                    ORANGE // STREAMING_TRACK
-                  </div>
+                <div className="flex flex-col gap-6">
+                  {Array.from(new Set([
+                    ...(project.videoUrl ? [project.videoUrl] : []),
+                    ...(project.videoUrls || [])
+                  ])).map((vUrl, index, allVideos) => (
+                    <div key={index} className="flex flex-col gap-2">
+                      {allVideos.length > 1 && (
+                        <span className="font-mono text-[9px] text-accent font-black uppercase tracking-widest block mb-1">
+                          [ VIDEO #{index + 1} // 영상 #{index + 1} ]
+                        </span>
+                      )}
+                      {/* Embedded custom style video player frame */}
+                      <div className="relative aspect-video w-full overflow-hidden border border-dark-border bg-black rounded-sm shadow-inner group">
+                        {!shouldUseIframe(vUrl) ? (
+                          <video
+                            src={getDirectVideoUrl(vUrl)}
+                            controls
+                            className="w-full h-full object-contain bg-black"
+                          />
+                        ) : (
+                          <iframe
+                            src={getEmbedUrl(vUrl)}
+                            title={`${project.title} - Video ${index + 1}`}
+                            frameBorder="0"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            allowFullScreen
+                            className="w-full h-full"
+                          />
+                        )}
+                        
+                        {/* Floating brand signature bottom right */}
+                        <div className="absolute bottom-2 right-2 px-2.5 py-1 bg-dark-bg/80 border border-dark-border text-[9px] font-mono text-dark-muted rounded-xs select-none pointer-events-none group-hover:text-accent group-hover:border-accent/40 transition-colors">
+                          ORANGE // STREAMING_TRACK #{index + 1}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
