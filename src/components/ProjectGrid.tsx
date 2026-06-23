@@ -208,25 +208,40 @@ export default function ProjectGrid({
           </AnimatePresence>
         </motion.div>
 
-        {/* Empty Search Fallback */}
+        {/* Empty Fallback */}
         {filteredProjects.length === 0 && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="py-24 border border-dashed border-dark-border rounded-sm text-center flex flex-col items-center justify-center max-w-lg mx-auto mt-6"
+            className="py-24 border border-dashed border-dark-border/60 rounded-sm text-center flex flex-col items-center justify-center max-w-lg mx-auto mt-6 px-6"
             id="empty-gallery-fallback"
           >
-            <span className="text-xl text-dark-muted uppercase font-syne font-black mb-3">전시물이 존재하지 않습니다</span>
-            <p className="font-outfit text-xs text-dark-muted max-w-xs leading-relaxed">
-              입력하신 검색어 "{searchQuery}" 또는 필터와 일치하는 작품 자료가 없습니다. 다른 키워드로 검색해 주세요.
-            </p>
-            <button 
-              onClick={() => { setSearchQuery(''); setActiveFilter('all'); }}
-              className="mt-6 px-4 py-2 border border-accent text-accent font-mono text-[10px] tracking-wide font-black hover:bg-accent hover:text-black cursor-pointer transition-all duration-300 rounded-sm"
-              id="empty-gallery-reset-btn"
-            >
-              RESET ALL SELECTIONS
-            </button>
+            {projects.length === 0 ? (
+              <>
+                <span className="text-lg md:text-xl text-dark-muted uppercase font-syne font-black mb-3">
+                  등록된 전시물이 없습니다
+                </span>
+                <p className="font-outfit text-xs text-dark-muted max-w-xs leading-relaxed">
+                  우측 상단 메뉴의 <span className="text-accent font-semibold">ADMIN</span> 버튼을 눌러 관리자 로그인 후 첫 전시물을 등록해 주세요.
+                </p>
+              </>
+            ) : (
+              <>
+                <span className="text-lg md:text-xl text-dark-muted uppercase font-syne font-black mb-3">
+                  전시물이 존재하지 않습니다
+                </span>
+                <p className="font-outfit text-xs text-dark-muted max-w-xs leading-relaxed">
+                  입력하신 검색어 "{searchQuery}" 또는 선택 필터와 일치하는 작품 자료가 없습니다. 검색어를 재확인하거나 초기화해 주세요.
+                </p>
+                <button 
+                  onClick={() => { setSearchQuery(''); setActiveFilter('all'); }}
+                  className="mt-6 px-4 py-2 border border-accent text-accent font-mono text-[10px] tracking-wide font-black hover:bg-accent hover:text-black cursor-pointer transition-all duration-300 rounded-sm"
+                  id="empty-gallery-reset-btn"
+                >
+                  RESET ALL SELECTIONS
+                </button>
+              </>
+            )}
           </motion.div>
         )}
 

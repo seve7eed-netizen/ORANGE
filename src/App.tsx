@@ -14,15 +14,60 @@ import Footer from './components/Footer';
 import { initialProjects } from './initialProjects';
 import { Project, CategoryFilter } from './types';
 import { AnimatePresence, motion } from 'motion/react';
-import { Sliders, Play, Settings, Landmark, ShieldCheck } from 'lucide-react';
+import { Sliders, Play, Settings, Landmark, ShieldCheck, Lock, Unlock, X, ArrowRight } from 'lucide-react';
+import { BulletproofDB } from './utils/db';
 
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [currentTab, setCurrentTab] = useState<string>('home'); // 'home', 'philosophy', 'gallery', 'admin'
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [isAdminLoggedIn, setIsAdminLoggedInState] = useState(() => {
+    try {
+      return localStorage.getItem('orange_archive_v2_admin_logged_in') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const setIsAdminLoggedIn = (val: boolean) => {
+    setIsAdminLoggedInState(val);
+    try {
+      localStorage.setItem('orange_archive_v2_admin_logged_in', val ? 'true' : 'false');
+    } catch (e) {
+      console.error(e);
+    }
+  };
   const [activeFilter, setActiveFilter] = useState<CategoryFilter>('all');
   const [scrollY, setScrollY] = useState(0);
+
+  // Password gate modal states
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState(false);
+
+  const handleAdminClick = () => {
+    if (isAdminLoggedIn) {
+      setCurrentTab('admin');
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    } else {
+      setShowPasswordModal(true);
+      setPasswordInput('');
+      setPasswordError(false);
+    }
+  };
+
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordInput === '1111') {
+      setIsAdminLoggedIn(true);
+      setShowPasswordModal(false);
+      setPasswordInput('');
+      setCurrentTab('admin');
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    } else {
+      setPasswordError(true);
+    }
+  };
 
   // References for scrolling
   const archiveRef = useRef<HTMLDivElement | null>(null);
@@ -72,38 +117,117 @@ export default function App() {
     return () => window.removeEventListener('scroll', handleScrollState);
   }, [currentTab]);
 
-  // Load from local Storage on boot, fallback to elegant preset
+  // 1-hour inactivity automatic logout tracker
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('orange_archive_portfolios');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Deep purge of any items matching obsolete categories or deprecated IDs (p3, p4, p6)
-        const filtered = parsed.filter((p: any) => 
-          p && 
-          p.id !== 'p3' && 
-          p.id !== 'p4' && 
-          p.id !== 'p6' && 
-          (p.category === 'photography' || p.category === 'videography')
-        );
-        if (filtered.length !== parsed.length || parsed.length === 0 || !parsed.some((p: any) => p.id === 'p1')) {
-          setProjects(initialProjects);
-          localStorage.setItem('orange_archive_portfolios', JSON.stringify(initialProjects));
-        } else {
-          setProjects(filtered);
+    if (!isAdminLoggedIn) return;
+
+    let timeoutId: any;
+
+    const resetTimer = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      // 1 hour = 3,600,000 milliseconds
+      timeoutId = setTimeout(() => {
+        setIsAdminLoggedIn(false);
+        if (currentTab === 'admin') {
+          setCurrentTab('home');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
         }
-      } else {
-        setProjects(initialProjects);
-        localStorage.setItem('orange_archive_portfolios', JSON.stringify(initialProjects));
+      }, 3600000);
+    };
+
+    // User activity signaling events
+    const activityEvents = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+
+    activityEvents.forEach((ev) => {
+      window.addEventListener(ev, resetTimer, { passive: true });
+    });
+
+    // Start timer on mount/active status
+    resetTimer();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      activityEvents.forEach((ev) => {
+        window.removeEventListener(ev, resetTimer);
+      });
+    };
+  }, [isAdminLoggedIn, currentTab]);
+
+  // Load from Dual-Drive (IndexedDB + Local Storage) on boot, fallback to elegant preset
+  useEffect(() => {
+    const bootstrapData = async () => {
+      try {
+        // Try IndexedDB first! It holds the high-volume image data
+        const storeProjects = await BulletproofDB.loadAll();
+        if (storeProjects && storeProjects.length > 0) {
+          const filtered = storeProjects.filter((p: any) =>
+            p &&
+            typeof p === 'object' &&
+            p.id &&
+            (p.category === 'photography' || p.category === 'videography')
+          );
+          if (filtered.length > 0) {
+            setProjects(filtered);
+            // Sync back to local storage as warm metadata cache fallback
+            try {
+              localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(filtered));
+            } catch (_) {}
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('IndexedDB load failed, falling back to LocalStorage:', e);
       }
-    } catch (e) {
+
+      // LocalStorage fallback
+      try {
+        const saved = localStorage.getItem('orange_archive_v2_portfolios');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const filtered = parsed.filter((p: any) => 
+              p && 
+              typeof p === 'object' &&
+              p.id &&
+              (p.category === 'photography' || p.category === 'videography')
+            );
+            setProjects(filtered);
+            // Sync IndexedDB
+            try {
+              await BulletproofDB.saveAll(filtered);
+            } catch (_) {}
+            return;
+          }
+        }
+      } catch (_) {}
+
+      // Ultimate fallback: static initial defaults
       setProjects(initialProjects);
-    }
+      try {
+        localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(initialProjects));
+        await BulletproofDB.saveAll(initialProjects);
+      } catch (_) {}
+    };
+
+    bootstrapData();
   }, []);
 
-  const updatePersistedData = (updated: Project[]) => {
+  const updatePersistedData = async (updated: Project[]) => {
     setProjects(updated);
-    localStorage.setItem('orange_archive_portfolios', JSON.stringify(updated));
+    
+    // 1. Save to high-capacity IndexedDB (unlimited megabytes)
+    try {
+      await BulletproofDB.saveAll(updated);
+    } catch (e) {
+      console.error('Failed to save to IndexedDB:', e);
+    }
+
+    // 2. Try to write to LocalStorage as cache (ignores quota warning)
+    try {
+      localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('LocalStorage limit saturated, saved securely in persistent IndexedDB:', e);
+    }
   };
 
   const handleAddProject = (p: Project) => {
@@ -153,8 +277,7 @@ export default function App() {
 
   const handleTabChange = (tab: string) => {
     if (tab === 'admin') {
-      setCurrentTab('admin');
-      window.scrollTo({ top: 0, behavior: 'instant' });
+      handleAdminClick();
       return;
     }
 
@@ -189,12 +312,11 @@ export default function App() {
         currentTab={currentTab}
         setCurrentTab={handleTabChange}
         isAdmin={isAdminLoggedIn}
-        onAdminClick={() => setCurrentTab('admin')}
+        onAdminClick={handleAdminClick}
         onLogout={() => {
           setIsAdminLoggedIn(false);
           setCurrentTab('home');
           window.scrollTo({ top: 0, behavior: 'instant' });
-          alert('관리자 모드가 해제되었습니다. 메인 화면으로 전환됩니다.');
         }}
         scrollY={scrollY}
       />
@@ -284,7 +406,98 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* 4. Footer info bar */}
+      {/* 4. Sleek floating Password Modal gate */}
+      <AnimatePresence>
+        {showPasswordModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
+            onClick={() => setShowPasswordModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+              className="relative max-w-sm w-full p-8 bg-dark-bg border border-dark-border/85 rounded-sm shadow-2xl overflow-hidden select-none"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Corner decorative bracket */}
+              <div className="absolute top-0 left-0 w-full h-[3px] bg-accent" />
+              
+              {/* Close button */}
+              <button
+                onClick={() => setShowPasswordModal(false)}
+                className="absolute top-4 right-4 text-dark-muted hover:text-white cursor-pointer transition-colors"
+                title="닫기"
+              >
+                <X size={16} />
+              </button>
+
+              <div className="text-center">
+                <div className="mx-auto rounded-full p-3 bg-dark-card border border-dark-border w-fit mb-4">
+                  <Lock size={20} className="text-accent" />
+                </div>
+
+                <h3 className="font-syne text-sm font-black text-white tracking-widest uppercase mb-1">
+                  ARCHIVIST WORKSPACE
+                </h3>
+                <p className="font-outfit text-[10px] text-dark-muted tracking-wide uppercase mb-6">
+                  자료 관리국 가도 조정반
+                </p>
+
+                <form onSubmit={handlePasswordSubmit} className="flex flex-col gap-4 text-left">
+                  <div>
+                    <label className="font-mono text-[9px] text-dark-muted uppercase tracking-widest block mb-1.5 text-center">
+                      ACCESS PASSCODE
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="••••"
+                      maxLength={8}
+                      autoFocus
+                      value={passwordInput}
+                      onChange={(e) => {
+                        setPasswordInput(e.target.value);
+                        if (passwordError) setPasswordError(false);
+                      }}
+                      className="w-full bg-dark-bg border border-dark-border py-2 px-4 rounded-sm text-center font-mono text-lg text-white placeholder-dark-border tracking-[0.5em] focus:border-accent/60 focus:outline-none"
+                      id="modal-passcode-input"
+                    />
+                  </div>
+
+                  {passwordError && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: -2 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-[10px] font-mono text-red-500 bg-red-950/20 border border-red-900/30 p-2 text-center rounded-sm"
+                    >
+                      [ ACCESS DENIED: INVALID PASSCODE ]
+                    </motion.div>
+                  )}
+
+                  <button
+                    type="submit"
+                    className="mt-2 w-full py-2 bg-accent hover:bg-[#fa8743] hover:text-black text-black font-mono font-black text-[10px] tracking-wider transition-all rounded-xs cursor-pointer flex items-center justify-center gap-1.5"
+                    id="modal-login-submit-btn"
+                  >
+                    <span>ENTER WORKSPACE</span>
+                    <ArrowRight size={11} />
+                  </button>
+                </form>
+
+                <div className="mt-6 pt-4 border-t border-dark-border/40 text-[9px] font-mono text-dark-muted leading-relaxed">
+                  비밀번호를 입력하고 승인받으신 후 포트폴리오 관리국에 접속할 수 있습니다. (기본: 1111)
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 5. Footer info bar */}
       <Footer />
       
     </div>

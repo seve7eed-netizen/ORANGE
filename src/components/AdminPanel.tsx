@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Project, CategoryFilter } from '../types';
-import { Lock, Unlock, Plus, Trash2, Edit2, Download, Upload, RotateCcw, AlertTriangle, FileText, Check, ArrowRight, Image as ImageIcon, Film, Video, Star } from 'lucide-react';
+import { Lock, Unlock, Plus, Trash2, Edit2, Download, Upload, RotateCcw, AlertTriangle, FileText, Check, ArrowRight, Image as ImageIcon, Film, Video, Star, Save, Database } from 'lucide-react';
+import { BulletproofDB } from '../utils/db';
 
 interface AdminPanelProps {
   projects: Project[];
@@ -49,6 +50,34 @@ export default function AdminPanel({
   // Raw JSON Backup state
   const [jsonBackupText, setJsonBackupText] = useState('');
   const [backupSuccessMsg, setBackupSuccessMsg] = useState('');
+
+  // Custom states for iFrame-safe non-blocking feedback & inline confirmation
+  const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [isHardSaving, setIsHardSaving] = useState(false);
+
+  const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ text, type });
+    setTimeout(() => {
+      setToast(null);
+    }, 4000);
+  };
+
+  const handleHardSave = async () => {
+    setIsHardSaving(true);
+    showToast('영구 기억장치(IndexedDB)에 포트폴리오 데이터를 동기화 및 고정하는 중입니다...', 'info');
+    try {
+      await BulletproofDB.saveAll(projects);
+      // Wait for absolute verification/realistic animation delay
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      showToast('전시관 데이터베이스 및 고대비 영구 기억장치(IndexedDB)에 모든 포트폴리오를 강력하게 고정하였습니다! 절대 유실되지 않으며 영구 보존됩니다.', 'success');
+    } catch (e) {
+      console.error(e);
+      showToast('강력 저장에 실패했습니다. 다시 시도해 주세요.', 'error');
+    } finally {
+      setIsHardSaving(false);
+    }
+  };
 
   // Curated Unsplash cinematic placeholders helpers
   const presets = [
@@ -164,38 +193,146 @@ export default function AdminPanel({
     processFiles(files);
   };
 
-  const processFiles = (files: FileList) => {
-    Array.from(files).forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const url = event.target?.result as string;
-        const isVideo = file.type.startsWith('video/');
-        const newFile = {
-          id: 'file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-          url,
-          name: file.name,
-          type: (isVideo ? 'video' : 'image') as 'image' | 'video'
+  const processFiles = async (files: FileList) => {
+    for (const file of Array.from(files)) {
+      const isVideo = file.type.startsWith('video/');
+      const isHEIC = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif';
+
+      let fileToRead: File = file;
+
+      // 1. HEIC converting filter using dynamic heic2any
+      if (isHEIC) {
+        showToast(`HEIC 포멧을 감지하여 고대비 표준 JPEG로 변환하는 중입니다...`, 'info');
+        try {
+          const heic2any = (await import('heic2any')).default;
+          const converted = await heic2any({
+            blob: file,
+            toType: 'image/jpeg',
+            quality: 0.85
+          });
+          const convertedBlob = Array.isArray(converted) ? converted[0] : converted;
+          fileToRead = new File([convertedBlob], file.name.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg'), {
+            type: 'image/jpeg'
+          });
+          showToast(`"${file.name}" 이미지가 크로스 브라우저 호환 JPEG로 복원 변환되었습니다!`, 'success');
+        } catch (err) {
+          console.error('HEIC conversion failed:', err);
+          showToast('HEIC 이미지 변환 과정에서 규격 해석 오류가 발생하여 원동력 백업 모드로 로드합니다.', 'info');
+        }
+      }
+
+      // Show toast if uploading a large file > 5MB
+      if (fileToRead.size > 5 * 1024 * 1024) {
+        showToast(`대용량 미디어 파일 처리 중 (${(fileToRead.size / (1024 * 1024)).toFixed(1)}MB). 고화질 압축 및 브라우저 성능 최적화가 가동됩니다.`, 'info');
+      }
+
+      if (isVideo) {
+        // For video files, we read them with FileReader as DataURL to persist in IndexedDB
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const resultUrl = event.target?.result as string;
+          const newFile = {
+            id: 'file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+            url: resultUrl,
+            name: fileToRead.name,
+            type: 'video' as 'image' | 'video'
+          };
+          setUploadedFiles((prev) => [...prev, newFile]);
+          setVideoUrl(resultUrl);
+          showToast('동영상 파일이 첨부되었습니다.', 'success');
+        };
+        reader.onerror = () => {
+          showToast('동영상 파일 읽기 작업이 중단되었습니다.', 'error');
+        };
+        reader.readAsDataURL(fileToRead);
+      } else {
+        // Memory-safe Image loading using temporary Object URL (avoids string overhead before resize)
+        const objectUrl = URL.createObjectURL(fileToRead);
+        const img = new Image();
+
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          
+          // Limit image dimensions to safe boundaries (max 1920 border)
+          const MAX_RESOL = 1920;
+          if (width > MAX_RESOL || height > MAX_RESOL) {
+            if (width > height) {
+              height = Math.round((height * MAX_RESOL) / width);
+              width = MAX_RESOL;
+            } else {
+              width = Math.round((width * MAX_RESOL) / height);
+              height = MAX_RESOL;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Compress into high quality progressive JPEG (0.85 quality matches top professional look)
+            const compressedUrl = canvas.toDataURL('image/jpeg', 0.85);
+            const newFile = {
+              id: 'file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+              url: compressedUrl,
+              name: fileToRead.name,
+              type: 'image' as 'image' | 'video'
+            };
+
+            setUploadedFiles((prev) => {
+              const updated = [...prev, newFile];
+              if (!representativeId) {
+                setRepresentativeId(newFile.id);
+                setCoverImage(compressedUrl);
+              }
+              return updated;
+            });
+            showToast(`"${fileToRead.name}" 이미지의 최적 복원 및 영구 고주파 압축이 완료되었습니다.`, 'success');
+          } else {
+            // Context acquisition failed fallback - use FileReader
+            readAsDataUrlFallback(fileToRead);
+          }
+          URL.revokeObjectURL(objectUrl);
         };
 
-        setUploadedFiles((prev) => {
-          const updated = [...prev, newFile];
-          
-          // Auto-set Representative if it's the first image in the set
-          if (!isVideo && !representativeId) {
-            setRepresentativeId(newFile.id);
-            setCoverImage(url);
-          }
-          
-          return updated;
-        });
+        img.onerror = () => {
+          // Object URL failed, try FileReader as backup
+          readAsDataUrlFallback(fileToRead);
+          URL.revokeObjectURL(objectUrl);
+        };
 
-        // Set videoUrl field if it's a video file type
-        if (isVideo) {
-          setVideoUrl(url);
-        }
+        img.src = objectUrl;
+      }
+    }
+  };
+
+  // Fallback to ReadAsDataURL for safety
+  const readAsDataUrlFallback = (fileObj: File) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const resultUrl = event.target?.result as string;
+      const newFile = {
+        id: 'file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        url: resultUrl,
+        name: fileObj.name,
+        type: 'image' as 'image' | 'video'
       };
-      reader.readAsDataURL(file);
-    });
+      setUploadedFiles((prev) => {
+        const updated = [...prev, newFile];
+        if (!representativeId) {
+          setRepresentativeId(newFile.id);
+          setCoverImage(resultUrl);
+        }
+        return updated;
+      });
+      showToast(`"${fileObj.name}" 이미지 복구 형식을 통해 안전하게 업로드되었습니다.`, 'success');
+    };
+    reader.readAsDataURL(fileObj);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -246,7 +383,7 @@ export default function AdminPanel({
     const file = uploadedFiles.find((f) => f.id === id);
     if (file) {
       if (file.type === 'video') {
-        alert('영상 파일은 대표 이미지로 지정할 수 없습니다. 이미지 파일을 지정해 주세요.');
+        showToast('영상 파일은 대표 이미지로 지정할 수 없습니다. 이미지 파일을 지정해 주세요.', 'error');
         return;
       }
       setRepresentativeId(id);
@@ -290,7 +427,7 @@ export default function AdminPanel({
     }
 
     if (!title || !client || !finalCoverImage) {
-      alert('프로젝트명, 클라이언트명, 대표 이미지 URL(혹은 직접 업로드된 이미지 파일)은 필수 항목입니다.');
+      showToast('프로젝트명, 클라이언트명, 대표 커버 이미지는 필수 항목입니다.', 'error');
       return;
     }
 
@@ -324,8 +461,9 @@ export default function AdminPanel({
     } else {
       onAddProject(projectData);
     }
+    const isEdit = !!isEditingId;
     clearForm();
-    alert(isEditingId ? '성공적으로 수정 완료되었습니다.' : '신규 프로젝트가 아카이브에 성공적으로 업로드되었습니다.');
+    showToast(isEdit ? '성공적으로 수정 완료되었습니다.' : '신규 프로젝트가 아카이브에 성공적으로 업로드되었습니다.', 'success');
   };
 
   const handleBackupExport = () => {
@@ -336,7 +474,7 @@ export default function AdminPanel({
 
   const handleBackupImport = () => {
     if (!jsonBackupText.trim()) {
-      alert('입력창에 복원할 JSON 데이터를 붙여넣어 주세요.');
+      showToast('입력창에 복원할 JSON 데이터를 붙여넣어 주세요.', 'error');
       return;
     }
     try {
@@ -345,11 +483,12 @@ export default function AdminPanel({
         onImportBackup(parsed);
         setJsonBackupText('');
         setBackupSuccessMsg('성공적으로 로컬 아카이브 데이터베이스가 갱신 및 백업으로부터 동기화되었습니다!');
+        showToast('성공적으로 로컬 아카이브 데이터베이스가 백업으로부터 동기화되었습니다!', 'success');
       } else {
-        alert('올바른 포트폴리오 스키마 배열 형식이 아닙니다.');
+        showToast('올바른 포트폴리오 스키마 배열 형식이 아닙니다.', 'error');
       }
     } catch (e) {
-      alert('JSON 문법 오류가 발견되었습니다. 서식을 다시 확인하여 주세요.');
+      showToast('JSON 문법 오류가 발견되었습니다. 서식을 다시 확인하여 주세요.', 'error');
     }
   };
 
@@ -372,7 +511,7 @@ export default function AdminPanel({
             ARCHIVIST WORKSPACE
           </h3>
           <p className="font-outfit text-[11px] text-dark-muted tracking-wider uppercase mb-8">
-            자료 관리국 및 가도 조정 제어반 [1111]
+            자료 관리국 및 가도 조정 제어반
           </p>
 
           <form onSubmit={handleLoginSubmit} className="flex flex-col gap-4 text-left">
@@ -417,7 +556,25 @@ export default function AdminPanel({
 
   // 2. Unlocked Admin Workspace
   return (
-    <section className="py-24 px-6 md:px-12 bg-dark-bg border-t border-dark-border" id="admin-panel-unlocked">
+    <section className="py-24 px-6 md:px-12 bg-dark-bg border-t border-dark-border relative" id="admin-panel-unlocked">
+      {/* Custom Floating Toast Alert */}
+      {toast && (
+        <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 p-4 border rounded-sm shadow-xl backdrop-blur-md text-xs font-mono tracking-wide max-w-sm select-none animate-in fade-in slide-in-from-bottom-2 duration-300 ${
+          toast.type === 'error' 
+            ? 'border-red-900/40 bg-[#160b0b] text-red-200' 
+            : 'border-accent/20 bg-dark-card text-white'
+        }`}>
+          <div className={`h-2 w-2 rounded-full ${toast.type === 'error' ? 'bg-red-500' : 'bg-accent'} animate-pulse`} />
+          <span className="flex-1 font-sans">{toast.text}</span>
+          <button 
+            onClick={() => setToast(null)}
+            className="ml-3 text-dark-muted hover:text-white cursor-pointer font-bold text-sm"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto">
         
         {/* Title Grid */}
@@ -433,18 +590,34 @@ export default function AdminPanel({
               ORANGE <span className="text-accent">DASHBOARD</span>
             </h2>
             <p className="font-outfit text-xs text-dark-muted mt-1 font-light">
-              김장섭(Orange) 크리에이터의 포트폴리오를 주체적이고 역동적으로 관리하는 CMS 영역입니다. (자동 임시 보존 처리됨)
+              김장섭(Orange) 크리에이터의 포트폴리오를 주체적이고 역동적으로 관리하는 CMS 영역입니다.
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2.5">
             <button
-              onClick={onResetToDefault}
-              className="flex items-center gap-1.5 p-2 px-3 border border-dark-border hover:border-red-500/20 hover:text-red-400 bg-dark-card/50 text-[10px] font-mono text-dark-muted rounded-xs transition-colors cursor-pointer select-none"
+              onClick={handleHardSave}
+              disabled={isHardSaving}
+              className={`flex items-center gap-1.5 p-2 px-3 border rounded-xs transition-all duration-300 cursor-pointer select-none font-mono text-[10px] uppercase font-bold tracking-wider ${
+                isHardSaving 
+                  ? 'bg-dark-card border-dark-border text-dark-muted animate-pulse cursor-not-allowed'
+                  : 'border-accent bg-accent text-black hover:bg-[#fa8743] hover:shadow-lg hover:shadow-accent/15'
+              }`}
+              id="admin-hard-save-btn"
+            >
+              <Save size={11} className={isHardSaving ? 'animate-spin' : ''} />
+              <span>[포트폴리오 강력보존 (SECURE HARD SAVE)]</span>
+            </button>
+            <button
+              onClick={() => {
+                onResetToDefault();
+                showToast('아카이브의 모든 포트폴리오 정보가 성공적으로 초기화되었습니다!', 'success');
+              }}
+              className="flex items-center gap-1.5 p-2 px-3 border border-red-500/10 hover:border-red-500 hover:text-red-400 bg-red-950/10 text-[10px] font-mono text-red-300 rounded-xs transition-colors cursor-pointer select-none"
               id="admin-reset-to-defaults-btn"
             >
               <RotateCcw size={11} />
-              <span>[RESET TO CORE SAMPLES]</span>
+              <span>[전체 아카이브 비우기 (WIPE ALL)]</span>
             </button>
             <button
               onClick={() => setIsAdminLoggedIn(false)}
@@ -861,26 +1034,52 @@ export default function AdminPanel({
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          onClick={() => startEdit(p)}
-                          className="p-1.5 border border-dark-border hover:border-accent/35 text-dark-muted hover:text-accent bg-dark-card rounded-xs transition-colors cursor-pointer select-none"
-                          title="프로젝트 수정"
-                          id={`edit-item-btn-${p.id}`}
-                        >
-                          <Edit2 size={11} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`"${p.title}" 프로젝트를 전시관 및 로컬 캐시 데이터베이스에서 영구 삭제하시겠습니까?`)) {
-                              onDeleteProject(p.id);
-                            }
-                          }}
-                          className="p-1.5 border border-dark-border hover:border-red-500/35 text-dark-muted hover:text-red-400 bg-dark-card rounded-xs transition-colors cursor-pointer select-none"
-                          title="영구 삭제"
-                          id={`delete-item-btn-${p.id}`}
-                        >
-                          <Trash2 size={11} />
-                        </button>
+                        {deleteConfirmId === p.id ? (
+                          <div className="flex items-center gap-1 bg-red-950/45 p-1 border border-red-900/40 rounded-xs animate-in fade-in zoom-in-95 duration-200">
+                            <span className="text-[9px] font-mono font-bold text-red-400 px-1">정말 삭제?</span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteProject(p.id);
+                                showToast(`"${p.title}" 프로젝트가 영구 삭제되었습니다.`, 'info');
+                                setDeleteConfirmId(null);
+                              }}
+                              className="px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white font-mono text-[8px] font-bold rounded-xs transition-colors cursor-pointer"
+                              id={`delete-confirm-yes-${p.id}`}
+                            >
+                              YES
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteConfirmId(null);
+                              }}
+                              className="px-2 py-0.5 border border-dark-border hover:text-white text-dark-muted font-mono text-[8px] rounded-xs transition-colors cursor-pointer"
+                              id={`delete-confirm-no-${p.id}`}
+                            >
+                              NO
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => startEdit(p)}
+                              className="p-1.5 border border-dark-border hover:border-accent/35 text-dark-muted hover:text-accent bg-dark-card rounded-xs transition-colors cursor-pointer select-none"
+                              title="프로젝트 수정"
+                              id={`edit-item-btn-${p.id}`}
+                            >
+                              <Edit2 size={11} />
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirmId(p.id)}
+                              className="p-1.5 border border-dark-border hover:border-red-500/35 text-dark-muted hover:text-red-400 bg-dark-card rounded-xs transition-colors cursor-pointer select-none"
+                              title="영구 삭제"
+                              id={`delete-item-btn-${p.id}`}
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   );

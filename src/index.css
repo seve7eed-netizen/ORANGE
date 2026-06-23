@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600;700&family=Syne:wght@600;700;800&family=Syncopate:wght@700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600;700&family=Syne:wght@600;700;800&family=Syncopate:wght@700&family=Antonio:wght@400;700&display=swap');
 @import url('https://cdn.jsdelivr.net/gh/sun-typeface/SUIT/fonts/static/woff2/SUIT.css');
 @import "tailwindcss";
 
@@ -7,6 +7,7 @@
   --font-syne: "Syne", sans-serif;
   --font-outfit: "Outfit", "SUIT", sans-serif;
   --font-syncopate: "Syncopate", sans-serif;
+  --font-antonio: "Antonio", sans-serif;
   --font-mono: "JetBrains Mono", monospace;
   
   --color-accent: #F37021;

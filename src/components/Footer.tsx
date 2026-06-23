@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mail, Instagram, Compass, ArrowUp } from 'lucide-react';
+import { Mail, Compass, ArrowUp, Smartphone } from 'lucide-react';
 
 export default function Footer() {
   const handleScrollToTop = () => {
@@ -15,15 +15,15 @@ export default function Footer() {
           
           {/* Logo brand info */}
           <div className="md:col-span-5 flex flex-col gap-4">
-            <div className="flex items-center gap-2">
-              <span className="font-syne text-xl font-bold text-white tracking-widest">
+            <div className="flex items-center gap-1.5 animate-pulse-slow">
+              <span className="font-syncopate text-base font-bold text-white tracking-wider">
                 ORANGE
               </span>
-              <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+              <span className="h-2 w-2 rounded-full bg-accent mb-1 animate-pulse" />
             </div>
 
             <p className="font-outfit text-xs text-dark-muted max-w-sm leading-relaxed font-light">
-              미스터 크리에이터 오렌지(김장섭)는 렌즈의 프레임을 통해 정량화할 수 없는 세상의 미학적인 궤도를 정밀 추적하고 구축하여, 가장 올바른 가도로 이야기를 안내합니다.
+              촬영부터 편집까지, 콘텐츠의 전 과정을 이해하는 제작
             </p>
           </div>
 
@@ -32,7 +32,7 @@ export default function Footer() {
             <span className="font-mono text-[9px] tracking-[0.25em] text-accent uppercase font-black block">
               // BRAND SLOGAN
             </span>
-            <span className="font-syne font-black text-white text-lg tracking-wider block">
+            <span className="font-antonio font-bold text-white text-xl tracking-[0.25em] block">
               ON THE TRACK
             </span>
             <span className="font-outfit text-xs text-dark-muted font-light leading-relaxed">
@@ -43,23 +43,24 @@ export default function Footer() {
           {/* Contact Coordinates */}
           <div className="md:col-span-3 flex flex-col gap-3">
             <span className="font-mono text-[9px] tracking-[0.25em] text-accent uppercase font-black block">
-              // CONTACT ME
+              // CONTACT
             </span>
             
             <div className="flex flex-col gap-2 font-mono text-[11px] text-dark-muted">
               <a 
-                href="mailto:seve7eed@gmail.com" 
+                href="mailto:seve7eed@naver.com" 
                 className="flex items-center gap-2 hover:text-white transition-colors cursor-pointer"
               >
                 <Mail size={12} className="text-accent" />
-                <span>seve7eed@gmail.com</span>
+                <span>seve7eed@naver.com</span>
               </a>
-              <div 
-                className="flex items-center gap-2 hover:text-white transition-colors cursor-pointer select-text"
+              <a 
+                href="tel:010-2739-7315" 
+                className="flex items-center gap-2 hover:text-white transition-colors cursor-pointer"
               >
-                <Instagram size={12} className="text-accent" />
-                <span>@orange_on_the_track</span>
-              </div>
+                <Smartphone size={12} className="text-accent" />
+                <span>010-2739-7315</span>
+              </a>
               <div className="flex items-center gap-2">
                 <Compass size={12} className="text-accent" />
                 <span className="select-none">SEOUL, KOREA // WORLDWIDE</span>
