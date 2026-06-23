@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Project } from '../types';
 import { X, Calendar, User, CheckSquare, Wrench, Image as ImageIcon, Video, Maximize2, ExternalLink } from 'lucide-react';
+import { getEmbedUrl } from '../utils/video';
 
 interface ProjectDetailProps {
   project: Project | null;
@@ -171,7 +172,7 @@ export default function ProjectDetail({ project, onClose }: ProjectDetailProps) 
                     />
                   ) : (
                     <iframe
-                      src={project.videoUrl}
+                      src={getEmbedUrl(project.videoUrl)}
                       title={project.title}
                       frameBorder="0"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"

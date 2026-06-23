@@ -904,6 +904,30 @@ export default function AdminPanel({
                   )}
                 </div>
 
+                {/* Direct Video Link Field (High Visibility) */}
+                <div className="border border-dark-border bg-dark-bg/20 p-4 rounded-sm flex flex-col gap-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Video size={13} className="text-accent" />
+                    <span className="font-mono text-[9px] text-accent uppercase tracking-widest block font-black">
+                      [ VIDEO STREAMING LINK // 동영상 링크 추가 ]
+                    </span>
+                  </div>
+                  <label className="font-mono text-[9.5px] text-white uppercase tracking-wider block">
+                    YOUTUBE OR VIMEO URL (유튜브 또는 비메오 동영상 주소)
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="예시: https://www.youtube.com/watch?v=dQw4w9WgXcQ 또는 https://youtu.be/..."
+                    value={videoUrl}
+                    onChange={(e) => setVideoUrl(e.target.value)}
+                    className="w-full bg-dark-bg border border-dark-border py-2 px-3 rounded-xs text-xs text-white placeholder-dark-muted focus:border-accent/50 focus:outline-none"
+                    id="form-video-url-input-new"
+                  />
+                  <p className="font-sans text-[10.5px] text-dark-muted leading-relaxed">
+                    ※ 전시할 동영상(유튜브/비메오 등)의 <strong>일반 웹 주소를 그대로 복사하여 입력</strong>해 주세요. 갤러리 뷰어에서 <strong>비디오 플레이어로 자동 변환</strong>되어 즉시 감상할 수 있습니다.
+                  </p>
+                </div>
+
                 {/* Advanced URL Fields (collapsible/secondary so they can still manually feed fallback URLs or presets) */}
                 <div className="border border-dark-border/40 p-4 rounded-sm bg-dark-bg/25">
                   <details className="group">
@@ -964,24 +988,6 @@ export default function AdminPanel({
                           className="w-full bg-dark-bg border border-dark-border py-1.5 px-3 rounded-xs text-[10px] text-white placeholder-dark-muted focus:border-accent/50 focus:outline-none"
                           id="form-additional-images-textarea"
                         />
-                      </div>
-
-                      {/* Video Embed Link */}
-                      <div>
-                        <label className="font-mono text-[9px] text-dark-muted uppercase tracking-widest block mb-1">
-                          VIDEO EMBED OR CONTENT URL (외부 유튜브 플레이어 또는 동영상 링크)
-                        </label>
-                        <input
-                          type="url"
-                          placeholder="예시: https://www.youtube.com/embed/dQw4w9WgXcQ"
-                          value={videoUrl}
-                          onChange={(e) => setVideoUrl(e.target.value)}
-                          className="w-full bg-dark-bg border border-dark-border py-1.5 px-3 rounded-xs text-[10px] text-white focus:border-accent/50 focus:outline-none"
-                          id="form-video-url-input"
-                        />
-                        <p className="font-mono text-[8px] text-dark-muted mt-1 leading-relaxed">
-                          ※ 직접 업로드하지 않으실 경우, iframe용 "/embed/" 주소 형식을 사용해 주시면 외부 플레이어 연동이 가능합니다.
-                        </p>
                       </div>
                     </div>
                   </details>
