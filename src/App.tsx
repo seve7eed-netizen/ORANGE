@@ -58,7 +58,7 @@ export default function App() {
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (passwordInput === '1111') {
+    if (passwordInput === '9764') {
       setIsAdminLoggedIn(true);
       setShowPasswordModal(false);
       setPasswordInput('');
@@ -441,12 +441,9 @@ export default function App() {
                   <Lock size={20} className="text-accent" />
                 </div>
 
-                <h3 className="font-syne text-sm font-black text-white tracking-widest uppercase mb-1">
+                <h3 className="font-syne text-sm font-black text-white tracking-widest uppercase mb-6">
                   ARCHIVIST WORKSPACE
                 </h3>
-                <p className="font-outfit text-[10px] text-dark-muted tracking-wide uppercase mb-6">
-                  자료 관리국 가도 조정반
-                </p>
 
                 <form onSubmit={handlePasswordSubmit} className="flex flex-col gap-4 text-left">
                   <div>
@@ -487,10 +484,6 @@ export default function App() {
                     <ArrowRight size={11} />
                   </button>
                 </form>
-
-                <div className="mt-6 pt-4 border-t border-dark-border/40 text-[9px] font-mono text-dark-muted leading-relaxed">
-                  비밀번호를 입력하고 승인받으신 후 포트폴리오 관리국에 접속할 수 있습니다. (기본: 1111)
-                </div>
               </div>
             </motion.div>
           </motion.div>
