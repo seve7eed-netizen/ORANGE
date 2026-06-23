@@ -630,6 +630,28 @@ export default function AdminPanel({
           </div>
         </div>
 
+        {/* Iframe Storage Security Alert Banner */}
+        <div className="mb-8 p-4 bg-orange-950/20 border border-accent/30 rounded-xs flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs">
+          <div className="flex gap-3 text-left">
+            <span className="text-xl leading-none">💡</span>
+            <div>
+              <p className="font-sans font-bold text-white mb-0.5">
+                [ 프리뷰(Iframe) 환경에서의 데이터 파일 업로드 주의 사항 ]
+              </p>
+              <p className="font-sans text-dark-muted leading-relaxed max-w-4xl">
+                브라우저 보안 규칙으로 인해 편집 창 우측의 <strong>임시 프리뷰(Iframe) 화면 내에서는 로컬 저장소(IndexedDB/LocalStorage) 작동이 차단되거나 세션이 유지되지 않고 삭제될 수 있습니다.</strong><br />
+                데이터가 유실되지 않는 <strong>완벽하고 안정적인 데이터 업로드를 위해서는 우측 상단의 '새 창에서 열기' 버튼 또는 실제 주소 홈페이지(Development/Shared App URL)로 직접 접속하여 관리자 패널(비밀번호 1111)을 사용</strong>해 주세요. 실제 홈페이지로 가시면 업로드한 포트폴리오 이미지가 로컬 디바이스에 완벽하고 영구적으로 보존됩니다!
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => window.open(window.location.origin, '_blank')}
+            className="shrink-0 p-2 px-3 border border-accent/40 hover:bg-accent hover:text-black text-[10px] font-mono font-bold uppercase rounded-xs text-accent transition-colors duration-300 cursor-pointer self-start md:self-center"
+          >
+            [새 창(홈페이지)에서 관리자 열기]
+          </button>
+        </div>
+
         {/* Outer Split layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
           
