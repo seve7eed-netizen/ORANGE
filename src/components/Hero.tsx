@@ -232,21 +232,46 @@ export default function Hero({ onEnter }: HeroProps) {
                 </text>
               </g>
 
-              {/* "ON THE TRACK" subtitle */}
-              <text 
-                x="445" 
-                y="320" 
-                fontFamily="'Antonio', 'SUIT', sans-serif" 
-                fontWeight="700" 
-                fontSize="17" 
-                fill="#9d9690" 
-                textAnchor="middle" 
-                dominantBaseline="middle" 
-                letterSpacing="16"
-                className="opacity-90 select-none pointer-events-none"
-              >
-                ON THE TRACK
-              </text>
+              {/* "ON THE TRACK" subtitle with breathing glow */}
+              <g>
+                <text 
+                  x="445" 
+                  y="320" 
+                  fontFamily="'Antonio', 'SUIT', sans-serif" 
+                  fontWeight="700" 
+                  fontSize="17" 
+                  fill="#9d9690" 
+                  textAnchor="middle" 
+                  dominantBaseline="middle" 
+                  letterSpacing="16"
+                  className="opacity-90 select-none pointer-events-none"
+                >
+                  ON THE TRACK
+                </text>
+                <text 
+                  x="445" 
+                  y="320" 
+                  fontFamily="'Antonio', 'SUIT', sans-serif" 
+                  fontWeight="700" 
+                  fontSize="17" 
+                  fill="#ffffff" 
+                  textAnchor="middle" 
+                  dominantBaseline="middle" 
+                  letterSpacing="16"
+                  filter="url(#breathing-glow)"
+                  className="select-none pointer-events-none"
+                >
+                  ON THE TRACK
+                  <animate 
+                    attributeName="opacity" 
+                    values="0.05; 0.95; 0.05" 
+                    dur="3.8s" 
+                    repeatCount="indefinite" 
+                    calcMode="spline"
+                    keySplines="0.4 0 0.2 1; 0.4 0 0.2 1"
+                  />
+                </text>
+              </g>
             </g>
           </svg>
         </div>
