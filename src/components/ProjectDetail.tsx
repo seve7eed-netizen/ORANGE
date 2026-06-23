@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Project } from '../types';
 import { X, Calendar, User, CheckSquare, Wrench, Image as ImageIcon, Video, Maximize2, ExternalLink } from 'lucide-react';
-import { getEmbedUrl } from '../utils/video';
+import { getEmbedUrl, getDirectVideoUrl, shouldUseIframe } from '../utils/video';
 
 interface ProjectDetailProps {
   project: Project | null;
@@ -164,9 +164,9 @@ export default function ProjectDetail({ project, onClose }: ProjectDetailProps) 
                 
                 {/* Embedded custom style video player frame */}
                 <div className="relative aspect-video w-full overflow-hidden border border-dark-border bg-black rounded-sm shadow-inner group">
-                  {project.videoUrl.startsWith('data:video/') || (!project.videoUrl.includes('youtube.com') && !project.videoUrl.includes('youtu.be') && !project.videoUrl.includes('vimeo.com')) ? (
+                  {!shouldUseIframe(project.videoUrl) ? (
                     <video
-                      src={project.videoUrl}
+                      src={getDirectVideoUrl(project.videoUrl)}
                       controls
                       className="w-full h-full object-contain bg-black"
                     />
