@@ -21,7 +21,11 @@ import {
   saveProjectToFirestore,
   deleteProjectFromFirestore,
   seedProjectsToFirestore,
-  subscribeToProjectsFromFirestore
+  subscribeToProjectsFromFirestore,
+  getDeletedProjectIdsFromFirestore,
+  markProjectAsDeletedInFirestore,
+  getSeededStatusFromFirestore,
+  clearDeletedProjectIdsInFirestore
 } from './utils/firebase';
 
 async function getLocalProjects(): Promise<Project[]> {
@@ -195,86 +199,137 @@ export default function App() {
 
     const bootstrapData = async () => {
       // 1. Retrieve all possible local projects from physical storage caches (PC/Local Browser)
-      const localProjectsList = await getLocalProjects();
+      let localProjectsList = await getLocalProjects();
+
+      // 2. Load deleted IDs & Seeded status from Firestore metadata
+      let deletedIds: string[] = [];
+      let isSeededInFirestore = false;
+      try {
+        deletedIds = await getDeletedProjectIdsFromFirestore();
+        isSeededInFirestore = await getSeededStatusFromFirestore();
+      } catch (err) {
+        console.warn('Failed to fetch firestore metadata during bootstrap:', err);
+      }
+      const deletedSet = new Set(deletedIds);
+
+      // Proactively delete p1, p2, p3 as requested by the user
+      const defaultIdsToDelete = ['p1', 'p2', 'p3'];
+      let needsCleanup = false;
+      for (const id of defaultIdsToDelete) {
+        if (!deletedSet.has(id)) {
+          needsCleanup = true;
+          await markProjectAsDeletedInFirestore(id);
+          try {
+            await deleteProjectFromFirestore(id);
+          } catch (_) {}
+        }
+      }
+      if (needsCleanup) {
+        // Refresh deleted ids set
+        try {
+          const freshDeleted = await getDeletedProjectIdsFromFirestore();
+          freshDeleted.forEach(id => deletedSet.add(id));
+        } catch (_) {}
+      }
+
+      // Filter local list against deleted set
+      if (deletedSet.size > 0) {
+        localProjectsList = localProjectsList.filter(p => p && p.id && !deletedSet.has(p.id));
+      }
 
       // Keep immediate styling in sync using local recovery caches
       if (localProjectsList.length > 0) {
         setProjects(localProjectsList);
       } else {
-        setProjects(initialProjects);
+        setProjects(isSeededInFirestore ? [] : initialProjects);
       }
 
-      // 2. High-availability one-time retrieval to bypass WebSocket/gRPC sandbox blocks
+      // 3. High-availability one-time retrieval to bypass WebSocket/gRPC sandbox blocks
       console.log('Performing immediate HTTPS fetch of projects from Firestore...');
       try {
-        const cloudProjects = await loadProjectsFromFirestore();
-        if (cloudProjects && cloudProjects.length > 0) {
-          console.log('Firestore HTTP load successfully completed. Count:', cloudProjects.length);
-          
-          const currentLocal = localProjectsList;
-          const localMap = new Map<string, Project>(currentLocal.map(p => [p.id, p]));
-          const cloudIds = new Set(cloudProjects.map(p => p.id));
-          
-          const mergedList: Project[] = [];
-          cloudProjects.forEach(cp => {
-            const lp = localMap.get(cp.id);
-            if (lp) {
-              const merged = { ...cp };
-              if (lp.videoUrl && lp.videoUrl.startsWith('data:') && !cp.videoUrl) {
-                merged.videoUrl = lp.videoUrl;
-              }
-              if (lp.videoUrls && cp.videoUrls) {
-                merged.videoUrls = Array.from(new Set([...lp.videoUrls, ...cp.videoUrls]));
-              } else if (lp.videoUrls && !cp.videoUrls) {
-                merged.videoUrls = lp.videoUrls;
-              }
-              mergedList.push(merged);
-            } else {
-              mergedList.push(cp);
-            }
-          });
-
-          // Identify and prepare missing items
-          const missingItems = currentLocal.filter(lp => lp && lp.id && !cloudIds.has(lp.id));
-          mergedList.push(...missingItems);
-
-          setProjects(mergedList);
-          try {
-            localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(mergedList));
-            await BulletproofDB.saveAll(mergedList);
-          } catch (_) {}
-
-          // Upload sequentially in the background
-          if (missingItems.length > 0 && !syncingInProgressRef.current) {
-            (async () => {
-              syncingInProgressRef.current = true;
-              setSyncStatus({ isSyncing: true, total: missingItems.length, current: 0 });
-              let uploaded = 0;
-              for (const lp of missingItems) {
-                try {
-                  console.log(`Auto uploading missing project "${lp.title}" to Firestore...`);
-                  await saveProjectToFirestore(lp);
-                  uploaded++;
-                  setSyncStatus({ isSyncing: true, total: missingItems.length, current: uploaded });
-                } catch (syncErr) {
-                  console.error(`Auto upload of project "${lp.title}" failed:`, syncErr);
-                }
-              }
-              setSyncStatus(null);
-              syncingInProgressRef.current = false;
-            })();
+        let cloudProjects = await loadProjectsFromFirestore();
+        if (cloudProjects) {
+          if (deletedSet.size > 0) {
+            cloudProjects = cloudProjects.filter(p => p && p.id && !deletedSet.has(p.id));
           }
-        } else if (cloudProjects && cloudProjects.length === 0) {
-          console.log('Firestore database is empty. Performing initial seed from client...');
-          const listToSeed = localProjectsList.length > 0 ? localProjectsList : initialProjects;
-          await seedProjectsToFirestore(listToSeed);
-          setProjects(listToSeed);
+
+          if (cloudProjects.length > 0) {
+            console.log('Firestore HTTP load successfully completed. Count:', cloudProjects.length);
+            
+            const currentLocal = localProjectsList;
+            const localMap = new Map<string, Project>(currentLocal.map(p => [p.id, p]));
+            const cloudIds = new Set(cloudProjects.map(p => p.id));
+            
+            const mergedList: Project[] = [];
+            cloudProjects.forEach(cp => {
+              const lp = localMap.get(cp.id);
+              if (lp) {
+                const merged = { ...cp };
+                if (lp.videoUrl && lp.videoUrl.startsWith('data:') && !cp.videoUrl) {
+                  merged.videoUrl = lp.videoUrl;
+                }
+                if (lp.videoUrls && cp.videoUrls) {
+                  merged.videoUrls = Array.from(new Set([...lp.videoUrls, ...cp.videoUrls]));
+                } else if (lp.videoUrls && !cp.videoUrls) {
+                  merged.videoUrls = lp.videoUrls;
+                }
+                mergedList.push(merged);
+              } else {
+                mergedList.push(cp);
+              }
+            });
+
+            // Identify and prepare missing items
+            const missingItems = currentLocal.filter(lp => lp && lp.id && !cloudIds.has(lp.id));
+            mergedList.push(...missingItems);
+
+            setProjects(mergedList);
+            try {
+              localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(mergedList));
+              await BulletproofDB.saveAll(mergedList);
+            } catch (_) {}
+
+            // Upload sequentially in the background
+            if (missingItems.length > 0 && !syncingInProgressRef.current) {
+              (async () => {
+                syncingInProgressRef.current = true;
+                setSyncStatus({ isSyncing: true, total: missingItems.length, current: 0 });
+                let uploaded = 0;
+                for (const lp of missingItems) {
+                  try {
+                    console.log(`Auto uploading missing project "${lp.title}" to Firestore...`);
+                    await saveProjectToFirestore(lp);
+                    uploaded++;
+                    setSyncStatus({ isSyncing: true, total: missingItems.length, current: uploaded });
+                  } catch (syncErr) {
+                    console.error(`Auto upload of project "${lp.title}" failed:`, syncErr);
+                  }
+                }
+                setSyncStatus(null);
+                syncingInProgressRef.current = false;
+              })();
+            }
+          } else {
+            if (isSeededInFirestore) {
+              console.log('Cloud database is empty because user deleted all projects. Keep empty.');
+              setProjects([]);
+              try {
+                localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify([]));
+                await BulletproofDB.saveAll([]);
+              } catch (_) {}
+            } else {
+              console.log('Firestore database is empty. Performing initial seed from client...');
+              const listToSeed = localProjectsList.length > 0 ? localProjectsList : initialProjects;
+              await seedProjectsToFirestore(listToSeed);
+              setProjects(listToSeed);
+            }
+          }
         }
       } catch (e) {
         console.warn('One-time Firestore HTTPS fetch did not complete (database may be clean or restricted):', e);
       }
 
-      // 3. Subscribe to Firebase Firestore for real-time live synchronization (1:1 with developer DB)
+      // 4. Subscribe to Firebase Firestore for real-time live synchronization (1:1 with developer DB)
       console.log('Subscribing to active projects stream from Firestore...');
       try {
         unsubscribe = subscribeToProjectsFromFirestore(
@@ -283,17 +338,32 @@ export default function App() {
             
             (async () => {
               try {
-                // Load current local store to compare and preserve assets
-                const localStore = await getLocalProjects();
+                // Fetch latest metadata
+                let freshDeletedIds: string[] = [];
+                let isSeeded = false;
+                try {
+                  freshDeletedIds = await getDeletedProjectIdsFromFirestore();
+                  isSeeded = await getSeededStatusFromFirestore();
+                } catch (e) {
+                  console.warn('Failed to load metadata in subscription callback:', e);
+                }
+                const freshDeletedSet = new Set(freshDeletedIds);
 
+                // Load current local store to compare and preserve assets
+                let localStore = await getLocalProjects();
+                if (freshDeletedSet.size > 0) {
+                  localStore = localStore.filter(lp => lp && lp.id && !freshDeletedSet.has(lp.id));
+                }
+
+                const filteredFirestoreProjects = firestoreProjects.filter(p => p && p.id && !freshDeletedSet.has(p.id));
                 const localMap = new Map<string, Project>(localStore.map(lp => [lp.id, lp]));
 
-                if (firestoreProjects.length > 0) {
+                if (filteredFirestoreProjects.length > 0) {
                   const unifiedList: Project[] = [];
-                  const cloudIds = new Set(firestoreProjects.map(p => p.id));
+                  const cloudIds = new Set(filteredFirestoreProjects.map(p => p.id));
 
                   // Process cloud projects, merging base64 video values from local copies
-                  firestoreProjects.forEach((cp) => {
+                  filteredFirestoreProjects.forEach((cp) => {
                     const lp = localMap.get(cp.id);
                     if (lp) {
                       const merged = { ...cp };
@@ -342,13 +412,22 @@ export default function App() {
                     })();
                   }
                 } else {
-                  console.log('Cloud database is empty. Seeding defaults or current local store...');
-                  const listToSeed = localStore.length > 0 ? localStore : initialProjects;
-                  setProjects(listToSeed);
-                  try {
-                    await seedProjectsToFirestore(listToSeed);
-                  } catch (seedingError) {
-                    console.error('Initial auto-seeding cloud registry failed:', seedingError);
+                  if (isSeeded) {
+                    console.log('Cloud database is empty because user deleted all projects (real-time). Keep empty.');
+                    setProjects([]);
+                    try {
+                      localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify([]));
+                      await BulletproofDB.saveAll([]);
+                    } catch (_) {}
+                  } else {
+                    console.log('Cloud database is empty. Seeding defaults or current local store...');
+                    const listToSeed = localStore.length > 0 ? localStore : initialProjects;
+                    setProjects(listToSeed);
+                    try {
+                      await seedProjectsToFirestore(listToSeed);
+                    } catch (seedingError) {
+                      console.error('Initial auto-seeding cloud registry failed:', seedingError);
+                    }
                   }
                 }
               } catch (innerErr) {
@@ -419,9 +498,10 @@ export default function App() {
 
   const handleDeleteProject = async (id: string) => {
     const updated = projects.filter((p) => p.id !== id);
-    updateLocalAndOfflineCache(updated);
+    await updateLocalAndOfflineCache(updated);
 
     try {
+      await markProjectAsDeletedInFirestore(id);
       await deleteProjectFromFirestore(id);
     } catch (e) {
       console.error('Firestore delete failed:', e);
@@ -430,7 +510,13 @@ export default function App() {
   };
 
   const handleResetToDefault = async () => {
-    updateLocalAndOfflineCache(initialProjects);
+    try {
+      await clearDeletedProjectIdsInFirestore();
+    } catch (e) {
+      console.warn('Failed to clear deleted project IDs during reset:', e);
+    }
+
+    await updateLocalAndOfflineCache(initialProjects);
     try {
       await seedProjectsToFirestore(initialProjects);
     } catch (e) {

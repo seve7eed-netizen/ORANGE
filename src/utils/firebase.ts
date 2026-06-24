@@ -8,7 +8,8 @@ import {
   deleteDoc, 
   writeBatch,
   onSnapshot,
-  query
+  query,
+  getDoc
 } from 'firebase/firestore';
 import { Project } from '../types';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -134,7 +135,9 @@ export async function loadProjectsFromFirestore(): Promise<Project[]> {
     const querySnapshot = await getDocs(collection(db, PROJECTS_COLLECTION));
     const projects: Project[] = [];
     querySnapshot.forEach((docSnap) => {
-      projects.push(docSnap.data() as Project);
+      if (docSnap.id !== '__deleted_metadata__') {
+        projects.push(docSnap.data() as Project);
+      }
     });
     return projects;
   } catch (error) {
@@ -155,7 +158,9 @@ export function subscribeToProjectsFromFirestore(
     (snapshot) => {
       const projects: Project[] = [];
       snapshot.forEach((docSnap) => {
-        projects.push(docSnap.data() as Project);
+        if (docSnap.id !== '__deleted_metadata__') {
+          projects.push(docSnap.data() as Project);
+        }
       });
       onUpdate(projects);
     },
@@ -170,6 +175,79 @@ export function subscribeToProjectsFromFirestore(
 }
 
 /**
+ * Loads the list of deleted project IDs from the metadata document in Firestore.
+ */
+export async function getDeletedProjectIdsFromFirestore(): Promise<string[]> {
+  try {
+    const docRef = doc(db, PROJECTS_COLLECTION, '__deleted_metadata__');
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return Array.isArray(data.deletedIds) ? data.deletedIds : [];
+    }
+    return [];
+  } catch (e) {
+    console.warn('Failed to load deleted metadata:', e);
+    return [];
+  }
+}
+
+/**
+ * Gets the seeded status of the database from the metadata document.
+ */
+export async function getSeededStatusFromFirestore(): Promise<boolean> {
+  try {
+    const docRef = doc(db, PROJECTS_COLLECTION, '__deleted_metadata__');
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return !!data.seeded;
+    }
+    return false;
+  } catch (e) {
+    console.warn('Failed to load seeded metadata:', e);
+    return false;
+  }
+}
+
+/**
+ * Clears all deleted project IDs in the Firestore metadata document.
+ */
+export async function clearDeletedProjectIdsInFirestore(): Promise<void> {
+  try {
+    const docRef = doc(db, PROJECTS_COLLECTION, '__deleted_metadata__');
+    await setDoc(docRef, { deletedIds: [], seeded: true }, { merge: true });
+  } catch (e) {
+    console.warn('Failed to clear deleted metadata:', e);
+  }
+}
+
+/**
+ * Marks a project ID as deleted in the Firestore metadata document.
+ */
+export async function markProjectAsDeletedInFirestore(id: string): Promise<void> {
+  try {
+    const docRef = doc(db, PROJECTS_COLLECTION, '__deleted_metadata__');
+    const docSnap = await getDoc(docRef);
+    let deletedIds: string[] = [];
+    let seeded = false;
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      seeded = !!data.seeded;
+      if (Array.isArray(data.deletedIds)) {
+        deletedIds = data.deletedIds;
+      }
+    }
+    if (!deletedIds.includes(id)) {
+      deletedIds = [...deletedIds, id];
+      await setDoc(docRef, { deletedIds, seeded: true }, { merge: true });
+    }
+  } catch (e) {
+    console.warn('Failed to save deleted metadata:', e);
+  }
+}
+
+/**
  * Saves a list of projects into Firestore in a single batch.
  */
 export async function seedProjectsToFirestore(projects: Project[]): Promise<void> {
@@ -178,7 +256,9 @@ export async function seedProjectsToFirestore(projects: Project[]): Promise<void
     
     const querySnapshot = await getDocs(collection(db, PROJECTS_COLLECTION));
     querySnapshot.forEach((docSnap) => {
-      batch.delete(docSnap.ref);
+      if (docSnap.id !== '__deleted_metadata__') {
+        batch.delete(docSnap.ref);
+      }
     });
 
     for (const project of projects) {
@@ -209,6 +289,10 @@ export async function seedProjectsToFirestore(projects: Project[]): Promise<void
       }
       batch.set(docRef, cloudProject);
     }
+
+    // Explicitly mark database as seeded in the metadata document
+    const metaRef = doc(db, PROJECTS_COLLECTION, '__deleted_metadata__');
+    batch.set(metaRef, { seeded: true }, { merge: true });
 
     await batch.commit();
   } catch (error) {
