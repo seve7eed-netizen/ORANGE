@@ -212,39 +212,11 @@ export default function App() {
         console.warn('Failed to fetch firestore metadata during bootstrap:', err);
       }
 
-      // Restoring p1 and p2 photography projects as requested by the user
-      if (deletedIds.includes('p1') || deletedIds.includes('p2')) {
-        try {
-          console.log('Restoring p1 and p2 photography projects as requested by the user...');
-          await undeleteProjectsInFirestore(['p1', 'p2']);
-          deletedIds = deletedIds.filter(id => id !== 'p1' && id !== 'p2');
-        } catch (e) {
-          console.warn('Failed to restore p1/p2 in firestore metadata:', e);
-        }
-      }
-
       const deletedSet = new Set(deletedIds);
 
       // Filter local list against deleted set
       if (deletedSet.size > 0) {
         localProjectsList = localProjectsList.filter(p => p && p.id && !deletedSet.has(p.id));
-      }
-
-      // Restore default photography projects to local cache if missing
-      const localIds = new Set(localProjectsList.map(p => p.id));
-      const defaultPhotographyProjects = initialProjects.filter(p => p.category === 'photography');
-      let localListUpdated = false;
-      for (const dp of defaultPhotographyProjects) {
-        if (!localIds.has(dp.id) && !deletedSet.has(dp.id)) {
-          localProjectsList.push(dp);
-          localListUpdated = true;
-        }
-      }
-      if (localListUpdated) {
-        try {
-          localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(localProjectsList));
-          await BulletproofDB.saveAll(localProjectsList);
-        } catch (_) {}
       }
 
       // Keep immediate styling in sync using local recovery caches
