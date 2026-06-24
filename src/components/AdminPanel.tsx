@@ -11,6 +11,7 @@ interface AdminPanelProps {
   onDeleteProject: (id: string) => Promise<void> | void;
   onResetToDefault: () => Promise<void> | void;
   onImportBackup: (imported: Project[]) => Promise<void> | void;
+  onForceSyncToCloud?: () => Promise<void> | void;
   isAdminLoggedIn: boolean;
   setIsAdminLoggedIn: (val: boolean) => void;
 }
@@ -22,6 +23,7 @@ export default function AdminPanel({
   onDeleteProject,
   onResetToDefault,
   onImportBackup,
+  onForceSyncToCloud,
   isAdminLoggedIn,
   setIsAdminLoggedIn
 }: AdminPanelProps) {
@@ -58,6 +60,7 @@ export default function AdminPanel({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isHardSaving, setIsHardSaving] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ text, type });
@@ -79,6 +82,21 @@ export default function AdminPanel({
       showToast('강력 저장에 실패했습니다. 다시 시도해 주세요.', 'error');
     } finally {
       setIsHardSaving(false);
+    }
+  };
+
+  const handleManualForceSync = async () => {
+    if (!onForceSyncToCloud) return;
+    setIsSyncingCloud(true);
+    showToast('클라우드 데이터베이스에 모든 홈페이지 데이터를 강제로 전송하는 중입니다...', 'info');
+    try {
+      await onForceSyncToCloud();
+      showToast('성공적으로 모든 활성 포트폴리오 데이터가 클라우드로 복제 및 동기화되었습니다! 이제 프리뷰(Shared App) 페이지에서도 완벽하게 확인 가능합니다.', 'success');
+    } catch (err) {
+      console.error('Failed to force sync:', err);
+      showToast('클라우드 동기화 실패: 네트워크가 지연되거나 대용량 첨부 이미지가 포함되어 있을 수 있습니다.', 'error');
+    } finally {
+      setIsSyncingCloud(false);
     }
   };
 
@@ -1155,7 +1173,23 @@ export default function AdminPanel({
                 <span className="font-mono text-[10px] uppercase text-white font-black tracking-widest">
                   [ ACTIVE ARCHIVE PIECES ({projects.length}) ]
                 </span>
-                <span className="text-[10px] font-mono text-accent select-none">LIVE SYNC</span>
+                <div className="flex items-center gap-2">
+                  {onForceSyncToCloud && (
+                    <button
+                      type="button"
+                      onClick={handleManualForceSync}
+                      disabled={isSyncingCloud}
+                      className="text-[10px] font-mono text-accent hover:text-white border border-accent/30 hover:border-accent px-2 py-0.5 rounded-xs transition-all flex items-center gap-1 cursor-pointer bg-accent/5 hover:bg-accent/20"
+                      title="모든 홈페이지 데이터를 클라우드로 강제 동기화하여 프리뷰와 100% 일치시킵니다"
+                    >
+                      {isSyncingCloud ? 'SYNCING...' : 'FORCE SYNC TO CLOUD ↗'}
+                    </button>
+                  )}
+                  <span className="text-[10px] font-mono text-accent/50 select-none flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                    LIVE
+                  </span>
+                </div>
               </div>
 
               <div className="flex flex-col gap-3 overflow-y-auto pr-1 no-scrollbar flex-1">

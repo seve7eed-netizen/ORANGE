@@ -292,7 +292,7 @@ export default function App() {
               })();
             }
           } else {
-            if (isSeededInFirestore) {
+            if (isSeededInFirestore && localProjectsList.length > 0) {
               console.log('Cloud database is empty because user deleted all projects. Keep empty.');
               setProjects([]);
               try {
@@ -300,7 +300,7 @@ export default function App() {
                 await BulletproofDB.saveAll([]);
               } catch (_) {}
             } else {
-              console.log('Firestore database is empty. Performing initial seed from client...');
+              console.log('Firestore database is empty or we are on a clean device. Fallback to initial default projects.');
               const listToSeed = localProjectsList.length > 0 ? localProjectsList : initialProjects;
               await seedProjectsToFirestore(listToSeed);
               setProjects(listToSeed);
@@ -517,6 +517,17 @@ export default function App() {
     }
   };
 
+  const handleForceSyncToCloud = async () => {
+    try {
+      console.log('Manually forcing complete sync of all active projects to Firestore...');
+      await seedProjectsToFirestore(projects);
+      console.log('Force cloud sync successfully finished.');
+    } catch (e) {
+      console.error('Force cloud sync failed:', e);
+      throw e;
+    }
+  };
+
   const scrollToSection = (sectionId: string) => {
     const el = document.getElementById(`section-${sectionId}`);
     if (el) {
@@ -603,6 +614,7 @@ export default function App() {
                 onDeleteProject={handleDeleteProject}
                 onResetToDefault={handleResetToDefault}
                 onImportBackup={handleImportBackup}
+                onForceSyncToCloud={handleForceSyncToCloud}
                 isAdminLoggedIn={isAdminLoggedIn}
                 setIsAdminLoggedIn={setIsAdminLoggedIn}
               />

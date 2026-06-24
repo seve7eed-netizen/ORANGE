@@ -66,12 +66,16 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
  * Automatically downsizes and compresses large base64 image strings to ensure Firestore documents remain 
  * well under the 1MB protocol size limit and pass validation.
  */
-export async function compressBase64IfNeeded(base64Str: string): Promise<string> {
+export async function compressBase64IfNeeded(
+  base64Str: string,
+  maxResolution = 500,
+  quality = 0.35
+): Promise<string> {
   if (!base64Str || !base64Str.startsWith('data:image/')) {
     return base64Str;
   }
   // If the base64 string is already reasonably small, bypass compression to save processing time
-  if (base64Str.length < 150000) {
+  if (base64Str.length < 80000) {
     return base64Str;
   }
 
@@ -89,7 +93,7 @@ export async function compressBase64IfNeeded(base64Str: string): Promise<string>
         let width = img.width;
         let height = img.height;
         
-        const MAX_RESOL = 800;
+        const MAX_RESOL = maxResolution;
         if (width > MAX_RESOL || height > MAX_RESOL) {
           if (width > height) {
             height = Math.round((height * MAX_RESOL) / width);
@@ -105,11 +109,11 @@ export async function compressBase64IfNeeded(base64Str: string): Promise<string>
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
+          ctx.imageSmoothingQuality = 'medium';
           ctx.drawImage(img, 0, 0, width, height);
           
-          // Downsize using a reliable compression quality (0.50 maintains aesthetic integrity for cover images while dropping size significantly)
-          const compressed = canvas.toDataURL('image/jpeg', 0.50);
+          // Downsize using a reliable compression quality (0.35 maintains aesthetic integrity for cover images while dropping size significantly)
+          const compressed = canvas.toDataURL('image/jpeg', quality);
           console.log(`Auto-optimized heavy local image asset: shrunk character length from ${base64Str.length} to ${compressed.length}`);
           resolve(compressed);
         } else {
@@ -293,13 +297,13 @@ export async function seedProjectsToFirestore(projects: Project[]): Promise<void
         }
       }
       if (cloudProject.coverImage && cloudProject.coverImage.startsWith('data:')) {
-        cloudProject.coverImage = await compressBase64IfNeeded(cloudProject.coverImage);
+        cloudProject.coverImage = await compressBase64IfNeeded(cloudProject.coverImage, 500, 0.35);
       }
       if (cloudProject.additionalImages) {
         const compressedList: string[] = [];
         for (const imgUrl of cloudProject.additionalImages) {
           if (imgUrl && imgUrl.startsWith('data:')) {
-            compressedList.push(await compressBase64IfNeeded(imgUrl));
+            compressedList.push(await compressBase64IfNeeded(imgUrl, 400, 0.30));
           } else {
             compressedList.push(imgUrl);
           }
@@ -337,13 +341,13 @@ export async function saveProjectToFirestore(project: Project): Promise<void> {
       }
     }
     if (cloudProject.coverImage && cloudProject.coverImage.startsWith('data:')) {
-      cloudProject.coverImage = await compressBase64IfNeeded(cloudProject.coverImage);
+      cloudProject.coverImage = await compressBase64IfNeeded(cloudProject.coverImage, 500, 0.35);
     }
     if (cloudProject.additionalImages) {
       const compressedList: string[] = [];
       for (const imgUrl of cloudProject.additionalImages) {
         if (imgUrl && imgUrl.startsWith('data:')) {
-          compressedList.push(await compressBase64IfNeeded(imgUrl));
+          compressedList.push(await compressBase64IfNeeded(imgUrl, 400, 0.30));
         } else {
           compressedList.push(imgUrl);
         }
