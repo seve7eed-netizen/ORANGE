@@ -223,6 +223,25 @@ export async function clearDeletedProjectIdsInFirestore(): Promise<void> {
 }
 
 /**
+ * Removes specified project IDs from the deleted list in the Firestore metadata document.
+ */
+export async function undeleteProjectsInFirestore(ids: string[]): Promise<void> {
+  try {
+    const docRef = doc(db, PROJECTS_COLLECTION, '__deleted_metadata__');
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      if (Array.isArray(data.deletedIds)) {
+        const updatedDeletedIds = data.deletedIds.filter((id: string) => !ids.includes(id));
+        await setDoc(docRef, { deletedIds: updatedDeletedIds }, { merge: true });
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to undelete projects in metadata:', e);
+  }
+}
+
+/**
  * Marks a project ID as deleted in the Firestore metadata document.
  */
 export async function markProjectAsDeletedInFirestore(id: string): Promise<void> {
