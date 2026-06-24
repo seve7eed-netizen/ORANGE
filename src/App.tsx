@@ -14,11 +14,46 @@ import Footer from './components/Footer';
 import { initialProjects } from './initialProjects';
 import { Project, CategoryFilter } from './types';
 import { AnimatePresence, motion } from 'motion/react';
-import { Sliders, Play, Settings, Landmark, ShieldCheck, Lock, Unlock, X, ArrowRight } from 'lucide-react';
+import { Sliders, Play, Settings, Landmark, ShieldCheck, Lock, Unlock, X, ArrowRight, RefreshCw } from 'lucide-react';
 import { BulletproofDB } from './utils/db';
+import {
+  loadProjectsFromFirestore,
+  saveProjectToFirestore,
+  deleteProjectFromFirestore,
+  seedProjectsToFirestore,
+  subscribeToProjectsFromFirestore
+} from './utils/firebase';
+
+async function getLocalProjects(): Promise<Project[]> {
+  let localList: Project[] = [];
+  try {
+    const saved = localStorage.getItem('orange_archive_v2_portfolios');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        localList = parsed.filter((p: any) => p && typeof p === 'object' && p.id);
+      }
+    }
+  } catch (_) {}
+
+  try {
+    const storeProjects = await BulletproofDB.loadAll();
+    if (storeProjects && storeProjects.length > 0) {
+      const filtered = storeProjects.filter((p: any) => p && typeof p === 'object' && p.id);
+      const localMap = new Map<string, Project>();
+      localList.forEach(p => localMap.set(p.id, p));
+      filtered.forEach(p => localMap.set(p.id, p));
+      localList = Array.from(localMap.values());
+    }
+  } catch (e) {
+    console.warn('IndexedDB load failed during boot, using LocalStorage:', e);
+  }
+  return localList;
+}
 
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [syncStatus, setSyncStatus] = useState<{ isSyncing: boolean; total: number; current: number } | null>(null);
   const [currentTab, setCurrentTab] = useState<string>('home'); // 'home', 'philosophy', 'gallery', 'admin'
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isAdminLoggedIn, setIsAdminLoggedInState] = useState(() => {
@@ -72,6 +107,7 @@ export default function App() {
   // References for scrolling
   const archiveRef = useRef<HTMLDivElement | null>(null);
   const isScrollingRef = useRef(false);
+  const syncingInProgressRef = useRef(false);
 
   // Scroll listener for landing splash scale effect
   useEffect(() => {
@@ -153,66 +189,193 @@ export default function App() {
     };
   }, [isAdminLoggedIn, currentTab]);
 
-  // Load from Dual-Drive (IndexedDB + Local Storage) on boot, fallback to elegant preset
+  // Load from Central Firebase Firestore (shared) or fallback to local Dual-Drive
   useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+
     const bootstrapData = async () => {
-      try {
-        // Try IndexedDB first! It holds the high-volume image data
-        const storeProjects = await BulletproofDB.loadAll();
-        if (storeProjects && storeProjects.length > 0) {
-          const filtered = storeProjects.filter((p: any) =>
-            p &&
-            typeof p === 'object' &&
-            p.id &&
-            (p.category === 'photography' || p.category === 'videography')
-          );
-          if (filtered.length > 0) {
-            setProjects(filtered);
-            // Sync back to local storage as warm metadata cache fallback
-            try {
-              localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(filtered));
-            } catch (_) {}
-            return;
-          }
-        }
-      } catch (e) {
-        console.warn('IndexedDB load failed, falling back to LocalStorage:', e);
+      // 1. Retrieve all possible local projects from physical storage caches (PC/Local Browser)
+      const localProjectsList = await getLocalProjects();
+
+      // Keep immediate styling in sync using local recovery caches
+      if (localProjectsList.length > 0) {
+        setProjects(localProjectsList);
+      } else {
+        setProjects(initialProjects);
       }
 
-      // LocalStorage fallback
+      // 2. High-availability one-time retrieval to bypass WebSocket/gRPC sandbox blocks
+      console.log('Performing immediate HTTPS fetch of projects from Firestore...');
       try {
-        const saved = localStorage.getItem('orange_archive_v2_portfolios');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            const filtered = parsed.filter((p: any) => 
-              p && 
-              typeof p === 'object' &&
-              p.id &&
-              (p.category === 'photography' || p.category === 'videography')
-            );
-            setProjects(filtered);
-            // Sync IndexedDB
-            try {
-              await BulletproofDB.saveAll(filtered);
-            } catch (_) {}
-            return;
-          }
-        }
-      } catch (_) {}
+        const cloudProjects = await loadProjectsFromFirestore();
+        if (cloudProjects && cloudProjects.length > 0) {
+          console.log('Firestore HTTP load successfully completed. Count:', cloudProjects.length);
+          
+          const currentLocal = localProjectsList;
+          const localMap = new Map<string, Project>(currentLocal.map(p => [p.id, p]));
+          const cloudIds = new Set(cloudProjects.map(p => p.id));
+          
+          const mergedList: Project[] = [];
+          cloudProjects.forEach(cp => {
+            const lp = localMap.get(cp.id);
+            if (lp) {
+              const merged = { ...cp };
+              if (lp.videoUrl && lp.videoUrl.startsWith('data:') && !cp.videoUrl) {
+                merged.videoUrl = lp.videoUrl;
+              }
+              if (lp.videoUrls && cp.videoUrls) {
+                merged.videoUrls = Array.from(new Set([...lp.videoUrls, ...cp.videoUrls]));
+              } else if (lp.videoUrls && !cp.videoUrls) {
+                merged.videoUrls = lp.videoUrls;
+              }
+              mergedList.push(merged);
+            } else {
+              mergedList.push(cp);
+            }
+          });
 
-      // Ultimate fallback: static initial defaults
-      setProjects(initialProjects);
+          // Identify and prepare missing items
+          const missingItems = currentLocal.filter(lp => lp && lp.id && !cloudIds.has(lp.id));
+          mergedList.push(...missingItems);
+
+          setProjects(mergedList);
+          try {
+            localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(mergedList));
+            await BulletproofDB.saveAll(mergedList);
+          } catch (_) {}
+
+          // Upload sequentially in the background
+          if (missingItems.length > 0 && !syncingInProgressRef.current) {
+            (async () => {
+              syncingInProgressRef.current = true;
+              setSyncStatus({ isSyncing: true, total: missingItems.length, current: 0 });
+              let uploaded = 0;
+              for (const lp of missingItems) {
+                try {
+                  console.log(`Auto uploading missing project "${lp.title}" to Firestore...`);
+                  await saveProjectToFirestore(lp);
+                  uploaded++;
+                  setSyncStatus({ isSyncing: true, total: missingItems.length, current: uploaded });
+                } catch (syncErr) {
+                  console.error(`Auto upload of project "${lp.title}" failed:`, syncErr);
+                }
+              }
+              setSyncStatus(null);
+              syncingInProgressRef.current = false;
+            })();
+          }
+        } else if (cloudProjects && cloudProjects.length === 0) {
+          console.log('Firestore database is empty. Performing initial seed from client...');
+          const listToSeed = localProjectsList.length > 0 ? localProjectsList : initialProjects;
+          await seedProjectsToFirestore(listToSeed);
+          setProjects(listToSeed);
+        }
+      } catch (e) {
+        console.warn('One-time Firestore HTTPS fetch did not complete (database may be clean or restricted):', e);
+      }
+
+      // 3. Subscribe to Firebase Firestore for real-time live synchronization (1:1 with developer DB)
+      console.log('Subscribing to active projects stream from Firestore...');
       try {
-        localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(initialProjects));
-        await BulletproofDB.saveAll(initialProjects);
-      } catch (_) {}
+        unsubscribe = subscribeToProjectsFromFirestore(
+          (firestoreProjects) => {
+            console.log('Real-time updates from Firestore. Count:', firestoreProjects.length);
+            
+            (async () => {
+              try {
+                // Load current local store to compare and preserve assets
+                const localStore = await getLocalProjects();
+
+                const localMap = new Map<string, Project>(localStore.map(lp => [lp.id, lp]));
+
+                if (firestoreProjects.length > 0) {
+                  const unifiedList: Project[] = [];
+                  const cloudIds = new Set(firestoreProjects.map(p => p.id));
+
+                  // Process cloud projects, merging base64 video values from local copies
+                  firestoreProjects.forEach((cp) => {
+                    const lp = localMap.get(cp.id);
+                    if (lp) {
+                      const merged = { ...cp };
+                      // Maintain local base64 videos
+                      if (lp.videoUrl && lp.videoUrl.startsWith('data:') && !cp.videoUrl) {
+                        merged.videoUrl = lp.videoUrl;
+                      }
+                      if (lp.videoUrls && cp.videoUrls) {
+                        merged.videoUrls = Array.from(new Set([...lp.videoUrls, ...cp.videoUrls]));
+                      } else if (lp.videoUrls && !cp.videoUrls) {
+                        merged.videoUrls = lp.videoUrls;
+                      }
+                      unifiedList.push(merged);
+                    } else {
+                      unifiedList.push(cp);
+                    }
+                  });
+
+                  // Only heal missing projects if we are not currently uploading
+                  const missingFromCloud = localStore.filter(lp => lp && lp.id && !cloudIds.has(lp.id));
+                  unifiedList.push(...missingFromCloud);
+
+                  setProjects(unifiedList);
+                  try {
+                    localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(unifiedList));
+                    await BulletproofDB.saveAll(unifiedList);
+                  } catch (_) {}
+
+                  if (missingFromCloud.length > 0 && !syncingInProgressRef.current) {
+                    (async () => {
+                      syncingInProgressRef.current = true;
+                      setSyncStatus({ isSyncing: true, total: missingFromCloud.length, current: 0 });
+                      let uploaded = 0;
+                      for (const lp of missingFromCloud) {
+                        try {
+                          console.log(`Healing missing local custom project "${lp.title}" into memory & cloud...`);
+                          await saveProjectToFirestore(lp);
+                          uploaded++;
+                          setSyncStatus({ isSyncing: true, total: missingFromCloud.length, current: uploaded });
+                        } catch (syncErr) {
+                          console.error(`Auto back-sync of local project "${lp.title}" failed:`, syncErr);
+                        }
+                      }
+                      setSyncStatus(null);
+                      syncingInProgressRef.current = false;
+                    })();
+                  }
+                } else {
+                  console.log('Cloud database is empty. Seeding defaults or current local store...');
+                  const listToSeed = localStore.length > 0 ? localStore : initialProjects;
+                  setProjects(listToSeed);
+                  try {
+                    await seedProjectsToFirestore(listToSeed);
+                  } catch (seedingError) {
+                    console.error('Initial auto-seeding cloud registry failed:', seedingError);
+                  }
+                }
+              } catch (innerErr) {
+                console.error('Error handling Firestore snapshot update in callback:', innerErr);
+              }
+            })();
+          },
+          (err) => {
+            console.warn('Real-time subscription to cloud projects was blocked or failed:', err);
+          }
+        );
+      } catch (e) {
+        console.error('Failed to initialize active project subscription:', e);
+      }
     };
 
     bootstrapData();
+
+    return () => {
+      if (unsubscribe) {
+        console.log('Unsubscribing active projects listener');
+        unsubscribe();
+      }
+    };
   }, []);
 
-  const updatePersistedData = async (updated: Project[]) => {
+  const updateLocalAndOfflineCache = async (updated: Project[]) => {
     setProjects(updated);
     
     // 1. Save to high-capacity IndexedDB (unlimited megabytes)
@@ -230,27 +393,60 @@ export default function App() {
     }
   };
 
-  const handleAddProject = (p: Project) => {
+  const handleAddProject = async (p: Project) => {
     const updated = [p, ...projects];
-    updatePersistedData(updated);
+    updateLocalAndOfflineCache(updated);
+
+    try {
+      await saveProjectToFirestore(p);
+    } catch (e) {
+      console.error('Firestore save failed:', e);
+      throw e;
+    }
   };
 
-  const handleUpdateProject = (p: Project) => {
+  const handleUpdateProject = async (p: Project) => {
     const updated = projects.map((orig) => (orig.id === p.id ? p : orig));
-    updatePersistedData(updated);
+    updateLocalAndOfflineCache(updated);
+
+    try {
+      await saveProjectToFirestore(p);
+    } catch (e) {
+      console.error('Firestore update failed:', e);
+      throw e;
+    }
   };
 
-  const handleDeleteProject = (id: string) => {
+  const handleDeleteProject = async (id: string) => {
     const updated = projects.filter((p) => p.id !== id);
-    updatePersistedData(updated);
+    updateLocalAndOfflineCache(updated);
+
+    try {
+      await deleteProjectFromFirestore(id);
+    } catch (e) {
+      console.error('Firestore delete failed:', e);
+      throw e;
+    }
   };
 
-  const handleResetToDefault = () => {
-    updatePersistedData(initialProjects);
+  const handleResetToDefault = async () => {
+    updateLocalAndOfflineCache(initialProjects);
+    try {
+      await seedProjectsToFirestore(initialProjects);
+    } catch (e) {
+      console.error('Firestore reset failed:', e);
+      throw e;
+    }
   };
 
-  const handleImportBackup = (imported: Project[]) => {
-    updatePersistedData(imported);
+  const handleImportBackup = async (imported: Project[]) => {
+    updateLocalAndOfflineCache(imported);
+    try {
+      await seedProjectsToFirestore(imported);
+    } catch (e) {
+      console.error('Firestore import backup failed:', e);
+      throw e;
+    }
   };
 
   const scrollToSection = (sectionId: string) => {
@@ -486,6 +682,28 @@ export default function App() {
                 </form>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 4.5. Real-time Database Synchronization Progress Overlay */}
+      <AnimatePresence>
+        {syncStatus && syncStatus.isSyncing && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            className="fixed bottom-6 right-6 z-[90] flex items-center gap-3 px-5 py-4 bg-[#111111]/90 border border-accent/40 rounded-sm shadow-2xl text-white font-mono text-xs select-none backdrop-blur-md"
+          >
+            <div className="relative flex items-center justify-center">
+              <RefreshCw className="animate-spin text-accent" size={16} />
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <span className="font-bold text-accent tracking-wider uppercase">DATABASE SYNCING</span>
+              <span className="text-[10px] text-dark-muted">
+                Uploading local custom projects to cloud: {syncStatus.current} / {syncStatus.total}
+              </span>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

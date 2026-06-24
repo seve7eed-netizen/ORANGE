@@ -143,7 +143,7 @@ export default function ProjectGrid({
                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
                       <motion.div 
                         initial={{ opacity: 0, scale: 0.8 }}
-                        whileInHover={{ opacity: 1, scale: 1 }}
+                        whileHover={{ opacity: 1, scale: 1 }}
                         className="flex items-center gap-2 px-4 py-2 border border-accent/40 bg-accent-dim text-accent font-mono text-[11px] font-bold rounded-sm tracking-widest"
                       >
                         <Eye size={12} className="animate-pulse" />

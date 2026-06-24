@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion } from 'motion/react';
 import { Project, CategoryFilter } from '../types';
 import { Lock, Unlock, Plus, Trash2, Edit2, Download, Upload, RotateCcw, AlertTriangle, FileText, Check, ArrowRight, Image as ImageIcon, Film, Video, Star, Save, Database } from 'lucide-react';
@@ -6,11 +6,11 @@ import { BulletproofDB } from '../utils/db';
 
 interface AdminPanelProps {
   projects: Project[];
-  onAddProject: (project: Project) => void;
-  onUpdateProject: (project: Project) => void;
-  onDeleteProject: (id: string) => void;
-  onResetToDefault: () => void;
-  onImportBackup: (imported: Project[]) => void;
+  onAddProject: (project: Project) => Promise<void> | void;
+  onUpdateProject: (project: Project) => Promise<void> | void;
+  onDeleteProject: (id: string) => Promise<void> | void;
+  onResetToDefault: () => Promise<void> | void;
+  onImportBackup: (imported: Project[]) => Promise<void> | void;
   isAdminLoggedIn: boolean;
   setIsAdminLoggedIn: (val: boolean) => void;
 }
@@ -51,11 +51,13 @@ export default function AdminPanel({
   // Raw JSON Backup state
   const [jsonBackupText, setJsonBackupText] = useState('');
   const [backupSuccessMsg, setBackupSuccessMsg] = useState('');
+  const backupFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Custom states for iFrame-safe non-blocking feedback & inline confirmation
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isHardSaving, setIsHardSaving] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ text, type });
@@ -261,8 +263,8 @@ export default function AdminPanel({
           let width = img.width;
           let height = img.height;
           
-          // Limit image dimensions to safe boundaries (max 1920 border)
-          const MAX_RESOL = 1920;
+          // Limit image dimensions to safe boundaries (max 800 border to fit Firestore size limitations)
+          const MAX_RESOL = 800;
           if (width > MAX_RESOL || height > MAX_RESOL) {
             if (width > height) {
               height = Math.round((height * MAX_RESOL) / width);
@@ -281,8 +283,8 @@ export default function AdminPanel({
             ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, 0, 0, width, height);
             
-            // Compress into high quality progressive JPEG (0.85 quality matches top professional look)
-            const compressedUrl = canvas.toDataURL('image/jpeg', 0.85);
+            // Compress into highly-optimized web-scaled JPEG (0.55 quality keeps Firestore records stable below 1MB)
+            const compressedUrl = canvas.toDataURL('image/jpeg', 0.55);
             const newFile = {
               id: 'file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
               url: compressedUrl,
@@ -298,7 +300,7 @@ export default function AdminPanel({
               }
               return updated;
             });
-            showToast(`"${fileToRead.name}" 이미지의 최적 복원 및 영구 고주파 압축이 완료되었습니다.`, 'success');
+            showToast(`"${fileToRead.name}" 이미지의 고주파 웹 최적화 압축(800px)이 완료되었습니다.`, 'success');
           } else {
             // Context acquisition failed fallback - use FileReader
             readAsDataUrlFallback(fileToRead);
@@ -466,20 +468,50 @@ export default function AdminPanel({
       featured
     };
 
-    if (isEditingId) {
-      onUpdateProject(projectData);
-    } else {
-      onAddProject(projectData);
-    }
+    setIsSaving(true);
     const isEdit = !!isEditingId;
-    clearForm();
-    showToast(isEdit ? '성공적으로 수정 완료되었습니다.' : '신규 프로젝트가 아카이브에 성공적으로 업로드되었습니다.', 'success');
+    const savePromise = isEdit ? onUpdateProject(projectData) : onAddProject(projectData);
+
+    Promise.resolve(savePromise)
+      .then(() => {
+        clearForm();
+        showToast(isEdit ? '성공적으로 수정 완료되었습니다.' : '신규 프로젝트가 아카이브에 성공적으로 업로드되었습니다.', 'success');
+      })
+      .catch((err) => {
+        console.error('Failed to sync project:', err);
+        let errorMsg = '클라우드 저장 실패: 권한이 없거나 첨부된 이미지 데이터의 용량이 초과되었습니다.';
+        if (err && typeof err === 'object' && err.message) {
+          errorMsg = `저장 실패: ${err.message}`;
+        }
+        showToast(errorMsg, 'error');
+      })
+      .finally(() => {
+        setIsSaving(false);
+      });
   };
 
   const handleBackupExport = () => {
-    const rawData = JSON.stringify(projects, null, 2);
-    setJsonBackupText(rawData);
-    setBackupSuccessMsg('현재 아카이브 리스트가 JSON 데이터로 변환되어 아래 텍스트창에 로딩되었습니다. 복사하여 소중히 보관하실 수 있습니다.');
+    try {
+      const rawData = JSON.stringify(projects, null, 2);
+      setJsonBackupText(rawData);
+
+      // Create a Blob and trigger a browser download
+      const blob = new Blob([rawData], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `orange_archive_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setBackupSuccessMsg('백업 JSON 파일 다운로드가 시작되었습니다. 하단 텍스트 영역에서도 백업본 확인 및 복사가 가능합니다.');
+      showToast('성공적으로 백업 파일(.json) 다운로드를 개시했습니다!', 'success');
+    } catch (err) {
+      console.error('Backup download error:', err);
+      showToast('백업 파일 생성에 실패했습니다.', 'error');
+    }
   };
 
   const handleBackupImport = () => {
@@ -489,7 +521,7 @@ export default function AdminPanel({
     }
     try {
       const parsed = JSON.parse(jsonBackupText);
-      if (Array.isArray(parsed) && parsed.every(p => p.id && p.title && p.client)) {
+      if (Array.isArray(parsed) && parsed.every(p => p && p.id && p.title)) {
         onImportBackup(parsed);
         setJsonBackupText('');
         setBackupSuccessMsg('성공적으로 로컬 아카이브 데이터베이스가 갱신 및 백업으로부터 동기화되었습니다!');
@@ -500,6 +532,32 @@ export default function AdminPanel({
     } catch (e) {
       showToast('JSON 문법 오류가 발견되었습니다. 서식을 다시 확인하여 주세요.', 'error');
     }
+  };
+
+  const handleBackupFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed) && parsed.every(p => p && p.id && p.title)) {
+          onImportBackup(parsed);
+          setJsonBackupText('');
+          setBackupSuccessMsg('성공적으로 로컬 아카이브 데이터베이스가 갱신 및 백업으로부터 동기화되었습니다!');
+          showToast('성공적으로 백업 파일(.json)을 로드하여 데이터베이스를 복원했습니다!', 'success');
+        } else {
+          showToast('올바른 포트폴리오 백업 형식이 아닙니다.', 'error');
+        }
+      } catch (err) {
+        showToast('JSON 파일 파싱에 실패했습니다.', 'error');
+      }
+    };
+    reader.readAsText(file);
+    // Reset file input value so same file can be selected again
+    e.target.value = '';
   };
 
   // 1. Password Protection Gate Form
@@ -1056,15 +1114,28 @@ export default function AdminPanel({
                 <div className="flex gap-3 mt-4 border-t border-dark-border pt-4">
                   <button
                     type="submit"
-                    className="flex-1 py-2.5 bg-accent hover:bg-[#fa8743] hover:text-black text-black font-mono font-black text-xs tracking-wider transition-all rounded-xs cursor-pointer text-center"
+                    disabled={isSaving}
+                    className={`flex-1 py-2.5 bg-accent hover:bg-[#fa8743] hover:text-black text-black font-mono font-black text-xs tracking-wider transition-all rounded-xs cursor-pointer text-center flex items-center justify-center gap-2 ${
+                      isSaving ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
                     id="form-submit-btn"
                   >
-                    {isEditingId ? 'SAVE CHANGES (수정 사항 디스크 임포트)' : 'UPLOAD TO ARCHIVE (전시관 업로드)'}
+                    {isSaving ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin inline-block" />
+                        <span>SAVING TO CLOUD...</span>
+                      </>
+                    ) : (
+                      isEditingId ? 'SAVE CHANGES (수정 사항 디스크 임포트)' : 'UPLOAD TO ARCHIVE (전시관 업로드)'
+                    )}
                   </button>
                   <button
                     type="button"
                     onClick={clearForm}
-                    className="px-4 py-2.5 border border-dark-border hover:bg-dark-bg text-dark-muted hover:text-white font-mono text-xs transition-colors rounded-xs cursor-pointer select-none"
+                    disabled={isSaving}
+                    className={`px-4 py-2.5 border border-dark-border hover:bg-dark-bg text-dark-muted hover:text-white font-mono text-xs transition-colors rounded-xs cursor-pointer select-none ${
+                      isSaving ? 'opacity-40 cursor-not-allowed' : ''
+                    }`}
                     id="form-clear-btn"
                   >
                     CANCEL
@@ -1191,28 +1262,60 @@ export default function AdminPanel({
               )}
 
               <textarea
-                rows={3}
-                placeholder="백업 내려받기 단추를 클릭하여 생성된 코드 정보나, 소지 중이신 JSON 백업 덤프 소스를 붙여넣어 주세요."
+                rows={1}
+                className="hidden"
+                readOnly
                 value={jsonBackupText}
-                onChange={(e) => setJsonBackupText(e.target.value)}
-                className="w-full bg-dark-bg border border-dark-border font-mono text-[9px] leading-normal p-2.5 rounded-xs text-dark-muted focus:text-white focus:outline-none mb-4"
-                id="raw-backup-textarea"
               />
 
-              <div className="flex gap-2.5">
+              <input
+                type="file"
+                ref={backupFileInputRef}
+                accept=".json"
+                onChange={handleBackupFileImport}
+                className="hidden"
+              />
+
+              <div className="flex flex-col sm:flex-row gap-3">
                 <button
+                  type="button"
                   onClick={handleBackupExport}
-                  className="flex-1 py-2 border border-accent hover:bg-accent hover:text-black text-accent text-[10px] font-mono rounded-xs transition-all duration-300 cursor-pointer select-none"
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-accent hover:bg-accent hover:text-black text-accent text-[10px] font-mono rounded-xs transition-all duration-300 cursor-pointer select-none"
                   id="backup-export-btn"
                 >
-                  DOWNLOAD BACKUP DAT
+                  <Download size={13} />
+                  DOWNLOAD BACKUP FILE (.json)
                 </button>
                 <button
+                  type="button"
+                  onClick={() => backupFileInputRef.current?.click()}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-dark-border hover:border-accent text-dark-muted hover:text-white text-[10px] font-mono rounded-xs transition-all duration-300 cursor-pointer select-none"
+                  id="backup-file-import-btn"
+                >
+                  <Upload size={13} />
+                  UPLOAD BACKUP FILE (.json)
+                </button>
+              </div>
+
+              <div className="mt-5 border-t border-dark-border pt-4">
+                <label className="block text-[10px] font-mono text-dark-muted uppercase tracking-wider mb-2">
+                  OR RAW TEXT PASTE RESTORE (또는 텍스트 직접 붙여넣기 복원)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="텍스트 복사/붙여넣기를 사용하려면 여기에 직접 JSON 백업 데이터를 붙여넣은 뒤 아래 복원 단추를 눌러주세요."
+                  value={jsonBackupText}
+                  onChange={(e) => setJsonBackupText(e.target.value)}
+                  className="w-full bg-dark-bg border border-dark-border font-mono text-[9px] leading-normal p-2.5 rounded-xs text-dark-muted focus:text-white focus:outline-none mb-2"
+                  id="raw-backup-textarea"
+                />
+                <button
+                  type="button"
                   onClick={handleBackupImport}
-                  className="flex-1 py-2 border border-dark-border hover:border-accent text-dark-muted hover:text-white text-[10px] font-mono rounded-xs transition-colors cursor-pointer select-none"
+                  className="w-full py-2 border border-dashed border-dark-border hover:border-accent text-dark-muted hover:text-white text-[10px] font-mono rounded-xs transition-colors cursor-pointer select-none"
                   id="backup-import-btn"
                 >
-                  RESTORE BACKUP DAT
+                  RESTORE FROM RAW TEXT CODE
                 </button>
               </div>
             </div>

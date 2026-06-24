@@ -1,0 +1,71 @@
+{
+  "entities": {
+    "Project": {
+      "title": "Project",
+      "description": "A photography or videography portfolio project",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the project"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the project"
+        },
+        "client": {
+          "type": "string",
+          "description": "Client name"
+        },
+        "period": {
+          "type": "string",
+          "description": "Time period of execution"
+        },
+        "scope": {
+          "type": "array",
+          "description": "List of scopes or services provided"
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description of the project"
+        },
+        "tools": {
+          "type": "array",
+          "description": "Tools and software used"
+        },
+        "coverImage": {
+          "type": "string",
+          "description": "URL of the cover image"
+        },
+        "additionalImages": {
+          "type": "array",
+          "description": "URLs of additional gallery images"
+        },
+        "videoUrl": {
+          "type": "string",
+          "description": "Primary display video URL"
+        },
+        "videoUrls": {
+          "type": "array",
+          "description": "List of all associated video links"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["photography", "videography"],
+          "description": "Project category"
+        },
+        "featured": {
+          "type": "boolean",
+          "description": "Whether the project is featured on home"
+        }
+      },
+      "required": ["id", "title", "client", "period", "scope", "description", "tools", "coverImage", "additionalImages", "category"]
+    }
+  },
+  "firestore": {
+    "/projects/{projectId}": {
+      "schema": "Project",
+      "description": "Global collection mapping portfolio projects"
+    }
+  }
+}
