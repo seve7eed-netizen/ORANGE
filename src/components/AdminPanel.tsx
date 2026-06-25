@@ -55,7 +55,7 @@ export default function AdminPanel({
   const [toolsRaw, setToolsRaw] = useState('');
   const [description, setDescription] = useState('');
   const [coverImage, setCoverImage] = useState('');
-  const [additionalImagesRaw, setAdditionalImagesRaw] = useState('');
+  const [additionalImages, setAdditionalImages] = useState<string[]>([]);
   const [videoUrl, setVideoUrl] = useState('');
   const [videoUrls, setVideoUrls] = useState<string[]>([]);
   const [featured, setFeatured] = useState(false);
@@ -100,6 +100,26 @@ export default function AdminPanel({
     }
   };
 
+  const getErrorMessage = (err: any): string => {
+    if (!err) return '알 수 없는 오류가 발생했습니다.';
+    const msg = err.message || String(err);
+    try {
+      if (msg.trim().startsWith('{')) {
+        const parsed = JSON.parse(msg);
+        if (parsed && parsed.error) {
+          if (parsed.error.includes('Missing or insufficient permissions')) {
+            return '데이터베이스 접근 권한이 없습니다. (보안 규칙 확인이 필요합니다)';
+          }
+          if (parsed.error.includes('Quota exceeded')) {
+            return 'Firestore 용량 초과 또는 요청 제한에 도달했습니다.';
+          }
+          return parsed.error;
+        }
+      }
+    } catch (_) {}
+    return msg;
+  };
+
   const handleManualForceSync = async () => {
     if (!onForceSyncToCloud) return;
     setIsSyncingCloud(true);
@@ -109,7 +129,7 @@ export default function AdminPanel({
       showToast('성공적으로 모든 활성 포트폴리오 데이터가 클라우드로 복제 및 동기화되었습니다! 이제 프리뷰(Shared App) 페이지에서도 완벽하게 확인 가능합니다.', 'success');
     } catch (err) {
       console.error('Failed to force sync:', err);
-      showToast('클라우드 동기화 실패: 네트워크가 지연되거나 대용량 첨부 이미지가 포함되어 있을 수 있습니다.', 'error');
+      showToast(`클라우드 동기화 실패: ${getErrorMessage(err)}`, 'error');
     } finally {
       setIsSyncingCloud(false);
     }
@@ -135,7 +155,7 @@ export default function AdminPanel({
       setHasLocalBackup(true);
     } catch (err: any) {
       console.error('Failed to pull from cloud:', err);
-      showToast(err.message || '데이터를 가져오는 중 오류가 발생했습니다. 클라우드가 비어 있는지 확인해 주세요.', 'error');
+      showToast(`데이터를 가져오는 중 오류가 발생했습니다: ${getErrorMessage(err)}`, 'error');
     } finally {
       setIsPullingCloud(false);
     }
@@ -207,9 +227,11 @@ export default function AdminPanel({
     setToolsRaw(p.tools.join(', '));
     setDescription(p.description);
     setCoverImage(p.coverImage);
-    setAdditionalImagesRaw(p.additionalImages.join(', '));
+    setAdditionalImages(p.additionalImages || []);
     setVideoUrl(p.videoUrl || '');
-    setVideoUrls(p.videoUrls || (p.videoUrl ? [p.videoUrl] : []));
+    // Make sure we don't duplicate the main videoUrl in videoUrls if they both exist
+    const otherVideos = p.videoUrls ? p.videoUrls.filter(v => v !== p.videoUrl) : [];
+    setVideoUrls(otherVideos);
     setFeatured(p.featured || false);
 
     // Initialize list with project resources
@@ -264,7 +286,7 @@ export default function AdminPanel({
     setToolsRaw('');
     setDescription('');
     setCoverImage('');
-    setAdditionalImagesRaw('');
+    setAdditionalImages([]);
     setVideoUrl('');
     setVideoUrls([]);
     setFeatured(false);
@@ -501,6 +523,14 @@ export default function AdminPanel({
       .map((t) => t.trim())
       .filter((t) => t.length > 0);
 
+    const cleanedAdditionalImages = additionalImages
+      .map(img => img.trim())
+      .filter(img => img.length > 0);
+
+    const allVideoUrls = [finalVideoUrl, ...videoUrls]
+      .map(v => v.trim())
+      .filter(v => v.length > 0);
+
     const projectData: Project = {
       id: isEditingId || 'p_' + Date.now(),
       title,
@@ -511,9 +541,9 @@ export default function AdminPanel({
       tools: cleanedTools.length > 0 ? cleanedTools : ['Camera', 'Photoshop'],
       description: description || '등록된 프로젝트 세부 설명이 없습니다.',
       coverImage: finalCoverImage,
-      additionalImages: [],
-      videoUrl: finalVideoUrl || undefined,
-      videoUrls: finalVideoUrl ? [finalVideoUrl] : undefined,
+      additionalImages: cleanedAdditionalImages,
+      videoUrl: allVideoUrls[0] || undefined,
+      videoUrls: allVideoUrls.length > 0 ? allVideoUrls : undefined,
       featured
     };
 
@@ -975,7 +1005,7 @@ export default function AdminPanel({
                   </span>
 
                   {/* Photo Link */}
-                  <div className="flex flex-col gap-1.5">
+                  <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                       <label className="font-mono text-[9px] text-white uppercase tracking-widest block font-bold">
                         PHOTO LINK (대표 사진 링크 - .jpg, .png, .webp 등 URL) *
@@ -991,10 +1021,47 @@ export default function AdminPanel({
                       id="form-cover-image-input"
                       required
                     />
+
+                    {/* Dynamic Additional Photo Links */}
+                    {additionalImages.map((imgUrl, index) => (
+                      <div key={index} className="flex gap-2 items-center mt-1.5 animate-fadeIn">
+                        <span className="font-mono text-[9px] text-accent font-bold shrink-0 min-w-[20px]">#{index + 1}</span>
+                        <input
+                          type="url"
+                          placeholder={`추가 사진 링크 #${index + 1} (예시: https://...)`}
+                          value={imgUrl}
+                          onChange={(e) => {
+                            const newImgs = [...additionalImages];
+                            newImgs[index] = e.target.value;
+                            setAdditionalImages(newImgs);
+                          }}
+                          className="flex-1 bg-dark-bg border border-dark-border py-1.5 px-3 rounded-xs text-xs text-white focus:border-accent/50 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAdditionalImages(additionalImages.filter((_, idx) => idx !== index));
+                          }}
+                          className="p-1.5 border border-red-500/30 hover:border-red-500 bg-red-500/5 hover:bg-red-500/10 text-red-500 hover:text-white rounded-xs transition-colors cursor-pointer shrink-0"
+                          title="삭제"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    ))}
+
+                    <button
+                      type="button"
+                      onClick={() => setAdditionalImages([...additionalImages, ''])}
+                      className="mt-1 flex items-center justify-center gap-1.5 py-2 px-3 border border-dashed border-accent/40 hover:border-accent bg-accent/5 hover:bg-accent/10 text-accent hover:text-white rounded-xs text-[10px] font-mono transition-all cursor-pointer w-full"
+                    >
+                      <Plus size={11} />
+                      <span>사진 링크 추가 (ADD PHOTO LINK)</span>
+                    </button>
                   </div>
 
                   {/* Video Link */}
-                  <div className="flex flex-col gap-1.5">
+                  <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                       <label className="font-mono text-[9px] text-white uppercase tracking-widest block font-bold">
                         VIDEO LINK (동영상 링크 - 유튜브, 비메오, 드라이브 등 URL)
@@ -1009,6 +1076,43 @@ export default function AdminPanel({
                       className="w-full bg-dark-bg border border-dark-border py-1.5 px-3 rounded-xs text-xs text-white placeholder-dark-muted focus:border-accent/50 focus:outline-none"
                       id="form-video-url-input-main"
                     />
+
+                    {/* Dynamic Additional Video Links */}
+                    {videoUrls.map((vUrl, index) => (
+                      <div key={index} className="flex gap-2 items-center mt-1.5 animate-fadeIn">
+                        <span className="font-mono text-[9px] text-accent font-bold shrink-0 min-w-[20px]">#{index + 1}</span>
+                        <input
+                          type="url"
+                          placeholder={`추가 동영상 링크 #${index + 1} (예시: https://...)`}
+                          value={vUrl}
+                          onChange={(e) => {
+                            const newVurls = [...videoUrls];
+                            newVurls[index] = e.target.value;
+                            setVideoUrls(newVurls);
+                          }}
+                          className="flex-1 bg-dark-bg border border-dark-border py-1.5 px-3 rounded-xs text-xs text-white focus:border-accent/50 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVideoUrls(videoUrls.filter((_, idx) => idx !== index));
+                          }}
+                          className="p-1.5 border border-red-500/30 hover:border-red-500 bg-red-500/5 hover:bg-red-500/10 text-red-500 hover:text-white rounded-xs transition-colors cursor-pointer shrink-0"
+                          title="삭제"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    ))}
+
+                    <button
+                      type="button"
+                      onClick={() => setVideoUrls([...videoUrls, ''])}
+                      className="mt-1 flex items-center justify-center gap-1.5 py-2 px-3 border border-dashed border-accent/40 hover:border-accent bg-accent/5 hover:bg-accent/10 text-accent hover:text-white rounded-xs text-[10px] font-mono transition-all cursor-pointer w-full"
+                    >
+                      <Plus size={11} />
+                      <span>비디오 링크 추가 (ADD VIDEO LINK)</span>
+                    </button>
                   </div>
                 </div>
 

@@ -20,7 +20,9 @@ import { isDevelopmentWorkspace } from './utils/isDev';
 import {
   loadProjectsFromFirestore,
   seedProjectsToFirestore,
-  seedProjectsToFirestoreWithProgress
+  seedProjectsToFirestoreWithProgress,
+  saveProjectToFirestore,
+  deleteProjectFromFirestore
 } from './utils/firebase';
 
 async function getLocalProjects(): Promise<Project[]> {
@@ -211,41 +213,46 @@ export default function App() {
         let localProjectsList = await getLocalProjects();
         localProjectsList = localProjectsList.filter(p => !isForbidden(p));
 
-        // If in development workspace, boot offline-first to protect and speed up local edits
-        if (isDev && localProjectsList.length > 0) {
-          console.log(`[Dev Workspace] Successfully booted offline-first! Loaded ${localProjectsList.length} projects locally.`);
-          setProjects(localProjectsList);
-          return;
-        }
-
-        // 2. Fetch from cloud (Firestore) as the primary source for guests/visitors in the Preview environment
+        // 2. Fetch from cloud (Firestore) as the primary source
         console.log('Fetching projects from Firestore cloud...');
         let cloudProjects = await loadProjectsFromFirestore();
+        
+        let finalProjects: Project[] = [];
+
         if (cloudProjects && cloudProjects.length > 0) {
           cloudProjects = cloudProjects.filter(p => !isForbidden(p));
           console.log(`Successfully loaded ${cloudProjects.length} projects from cloud.`);
-          setProjects(cloudProjects);
+          
+          // Merge local and cloud projects. If there's an ID collision, prefer the cloud version,
+          // but preserve any unique local projects that might not be synced yet.
+          const projectMap = new Map<string, Project>();
+          localProjectsList.forEach(p => projectMap.set(p.id, p));
+          cloudProjects.forEach(p => projectMap.set(p.id, p)); // Cloud overrides local
+          
+          finalProjects = Array.from(projectMap.values());
+          
+          // Update local caches to keep them in perfect sync
           try {
-            localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(cloudProjects));
-            await BulletproofDB.saveAll(cloudProjects);
+            localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(finalProjects));
+            await BulletproofDB.saveAll(finalProjects);
           } catch (_) {}
         } else {
-          // Fallback to local storage or defaults if cloud is empty
+          // Cloud is empty, use local projects or fallback to empty defaults
           if (localProjectsList.length > 0) {
             console.log(`Cloud was empty. Loaded ${localProjectsList.length} projects from local storage.`);
-            setProjects(localProjectsList);
+            finalProjects = localProjectsList;
           } else {
-            console.log('Both local and cloud stores empty. Loading initial defaults.');
-            setProjects(initialProjects);
-            try {
-              localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(initialProjects));
-              await BulletproofDB.saveAll(initialProjects);
-            } catch (_) {}
+            console.log('Both local and cloud stores empty. Starting with empty archive.');
+            finalProjects = [];
           }
         }
+
+        setProjects(finalProjects);
       } catch (err) {
-        console.warn('Bootstrapping failed, falling back to basic defaults:', err);
-        setProjects(initialProjects);
+        console.warn('Bootstrapping failed, falling back to local list or empty:', err);
+        let localProjectsList = await getLocalProjects();
+        localProjectsList = localProjectsList.filter(p => !isForbidden(p));
+        setProjects(localProjectsList);
       }
     };
 
@@ -273,16 +280,34 @@ export default function App() {
   const handleAddProject = async (p: Project) => {
     const updated = [p, ...projects];
     await updateLocalAndOfflineCache(updated);
+    try {
+      await saveProjectToFirestore(p);
+      console.log('Successfully auto-saved new project to Firestore cloud.');
+    } catch (e) {
+      console.warn('Failed to auto-save to Firestore, cached locally:', e);
+    }
   };
 
   const handleUpdateProject = async (p: Project) => {
     const updated = projects.map((orig) => (orig.id === p.id ? p : orig));
     await updateLocalAndOfflineCache(updated);
+    try {
+      await saveProjectToFirestore(p);
+      console.log('Successfully auto-saved updated project to Firestore cloud.');
+    } catch (e) {
+      console.warn('Failed to auto-save to Firestore, cached locally:', e);
+    }
   };
 
   const handleDeleteProject = async (id: string) => {
     const updated = projects.filter((p) => p.id !== id);
     await updateLocalAndOfflineCache(updated);
+    try {
+      await deleteProjectFromFirestore(id);
+      console.log('Successfully auto-deleted project from Firestore cloud.');
+    } catch (e) {
+      console.warn('Failed to auto-delete from Firestore, cached locally:', e);
+    }
   };
 
   const handleResetToDefault = async () => {
