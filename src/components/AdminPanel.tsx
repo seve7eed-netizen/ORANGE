@@ -508,8 +508,20 @@ export default function AdminPanel({
     let finalCoverImage = coverImage.trim();
     let finalVideoUrl = videoUrl.trim();
 
+    // Check if there is a representative file in uploadedFiles
+    const repFile = uploadedFiles.find(f => f.id === representativeId && f.type === 'image');
+    if (repFile) {
+      finalCoverImage = repFile.url;
+    } else {
+      // If representativeId doesn't point to a file, but there are uploaded images, pick the first one
+      const uploadedImagesOnly = uploadedFiles.filter(f => f.type === 'image');
+      if (uploadedImagesOnly.length > 0 && !finalCoverImage) {
+        finalCoverImage = uploadedImagesOnly[0].url;
+      }
+    }
+
     if (!title || !client || !finalCoverImage) {
-      showToast('프로젝트명, 클라이언트명, 사진 링크는 필수 항목입니다.', 'error');
+      showToast('프로젝트명, 클라이언트명, 대표 사진은 필수 항목입니다. 직접 파일을 업로드하거나 이미지 링크를 입력해 주세요.', 'error');
       return;
     }
 
@@ -523,9 +535,20 @@ export default function AdminPanel({
       .map((t) => t.trim())
       .filter((t) => t.length > 0);
 
-    const cleanedAdditionalImages = additionalImages
+    // Collect all uploaded images that are NOT the representative one
+    const uploadedAddImages = uploadedFiles
+      .filter(f => f.type === 'image' && f.id !== (repFile?.id || representativeId))
+      .map(f => f.url);
+
+    const manualAddImages = additionalImages
       .map(img => img.trim())
       .filter(img => img.length > 0);
+
+    // Combine uploaded images and manual image URLs (without duplication)
+    const cleanedAdditionalImages = Array.from(new Set([
+      ...uploadedAddImages,
+      ...manualAddImages
+    ]));
 
     const allVideoUrls = [finalVideoUrl, ...videoUrls]
       .map(v => v.trim())
@@ -788,7 +811,7 @@ export default function AdminPanel({
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <h4 className="font-syne text-sm font-bold text-emerald-400 uppercase tracking-wider">
-                    {isDev ? '클라우드에 데이터 저장 및 전송 (Development Workspace)' : '클라우드에서 데이터 가져오기 (Preview Client)'}
+                    클라우드 데이터 동기화 제어 센터 (Cloud Sync Center)
                   </h4>
                   <span className="flex items-center gap-1 font-mono text-[9px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full uppercase">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -796,39 +819,32 @@ export default function AdminPanel({
                   </span>
                 </div>
                 <p className="font-sans text-xs text-dark-muted leading-relaxed max-w-3xl">
-                  {isDev ? (
-                    <>
-                      이 버튼을 누르면 홈페이지 워크스페이스에서 작성하신 <strong>모든 포트폴리오/사진촬영 데이터가 클라우드에 영구 저장</strong>되며, 우측의 <strong>Shared App (공유 프리뷰 화면)에 실시간 반영</strong>됩니다. 
-                      현재 개발 환경에서는 실수로 데이터가 지워지는 것을 방지하기 위해 '가져오기' 버튼이 완전히 숨겨져 있으며, '클라우드로 저장'만 가능하여 안심하고 작업하실 수 있습니다!
-                    </>
-                  ) : (
-                    <>
-                      공유받으신 프리뷰 화면입니다. 아래의 <strong>'클라우드 데이터 가져오기'</strong> 버튼을 누르면 개발자 워크스페이스에서 전송된 최신 고화질 포트폴리오와 사진 촬영물들이 현재 브라우저의 로컬 저장소로 복원되어 고화질 그대로 화면에 출력됩니다.
-                    </>
-                  )}
+                  구글 AI 스튜디오 프리뷰 환경과 배포된 Netlify 웹사이트 간에 포트폴리오 데이터를 완벽하게 실시간 동기화할 수 있습니다.
+                  <br />
+                  • <strong className="text-emerald-400">클라우드 데이터 저장 ↗</strong>: 현재 화면의 포트폴리오/사진촬영 데이터를 클라우드 데이터베이스에 영구 저장하여 Netlify 등 다른 기기에서 가져갈 수 있게 합니다.
+                  <br />
+                  • <strong className="text-emerald-400">클라우드 데이터 가져오기 ↙</strong>: 클라우드에 보관된 최신 포트폴리오 데이터를 현재 브라우저로 가져와 화면에 즉시 적용합니다. (실행 전 자동으로 로컬 백업이 생성됩니다)
                 </p>
               </div>
             </div>
             
             <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto shrink-0">
-              {isDev && (
-                <button
-                  type="button"
-                  onClick={handleManualForceSync}
-                  disabled={isSyncingCloud || isPullingCloud}
-                  className={`shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 shadow-lg ${
-                    isSyncingCloud
-                      ? 'bg-dark-card border border-dark-border text-dark-muted animate-pulse cursor-not-allowed shadow-none'
-                      : 'bg-emerald-500 text-black hover:bg-emerald-400 hover:shadow-emerald-500/20 active:scale-[0.98] cursor-pointer'
-                  }`}
-                  id="admin-main-cloud-sync-btn"
-                >
-                  <Database size={13} className={isSyncingCloud ? 'animate-spin' : ''} />
-                  <span>{isSyncingCloud ? '동기화 전송 중...' : '클라우드 데이터 저장 ↗'}</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={handleManualForceSync}
+                disabled={isSyncingCloud || isPullingCloud}
+                className={`shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 shadow-lg ${
+                  isSyncingCloud
+                    ? 'bg-dark-card border border-dark-border text-dark-muted animate-pulse cursor-not-allowed shadow-none'
+                    : 'bg-emerald-500 text-black hover:bg-emerald-400 hover:shadow-emerald-500/20 active:scale-[0.98] cursor-pointer'
+                }`}
+                id="admin-main-cloud-sync-btn"
+              >
+                <Database size={13} className={isSyncingCloud ? 'animate-spin' : ''} />
+                <span>{isSyncingCloud ? '동기화 전송 중...' : '클라우드 데이터 저장 ↗'}</span>
+              </button>
 
-              {!isDev && onPullFromCloud && (
+              {onPullFromCloud && (
                 <button
                   type="button"
                   onClick={handleManualPull}
@@ -1003,6 +1019,123 @@ export default function AdminPanel({
                   <span className="font-mono text-[9px] text-accent uppercase tracking-widest block font-black">
                     [ GALLERY MEDIA LINKS // 포트폴리오 직접 미디어 URL 입력 ]
                   </span>
+
+                  {/* DIRECT FILE UPLOADER & PREVIEW ZONE */}
+                  <div className="border border-dark-border/60 bg-dark-bg/60 p-4 rounded-xs flex flex-col gap-3">
+                    <div className="flex items-center justify-between border-b border-dark-border/40 pb-2">
+                      <span className="font-mono text-[9px] text-accent uppercase tracking-widest block font-black">
+                        [ DIRECT MEDIA UPLOAD // 미디어 파일 직접 업로드 ]
+                      </span>
+                      <span className="text-[8px] font-sans text-dark-muted font-bold">
+                        HEIC 자동 변환 • 600px 스마트 리사이징 적용
+                      </span>
+                    </div>
+
+                    {/* Drag and Drop Zone */}
+                    <div
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      onClick={() => {
+                        const fileInput = document.getElementById('project-media-upload-input');
+                        if (fileInput) fileInput.click();
+                      }}
+                      className={`border-2 border-dashed rounded-xs p-5 text-center cursor-pointer transition-all duration-300 flex flex-col items-center justify-center gap-2 group ${
+                        isDragging
+                          ? 'border-accent bg-accent/10 text-white'
+                          : 'border-dark-border/80 hover:border-accent/50 bg-dark-bg/30 text-dark-muted hover:text-white'
+                      }`}
+                    >
+                      <input
+                        type="file"
+                        id="project-media-upload-input"
+                        multiple
+                        accept="image/*,video/*"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                      />
+                      <Upload size={20} className={`transition-transform duration-300 group-hover:-translate-y-0.5 ${isDragging ? 'text-accent' : 'text-dark-muted group-hover:text-accent'}`} />
+                      <div className="flex flex-col gap-0.5 select-none">
+                        <p className="font-sans text-xs font-bold text-white/90">
+                          클릭하여 파일을 선택하거나 여기에 드래그 앤 드롭 하세요
+                        </p>
+                        <p className="font-sans text-[10px] text-dark-muted">
+                          지원 형식: JPG, PNG, WEBP, HEIC 및 MP4 등 영상
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Uploaded Files List */}
+                    {uploadedFiles.length > 0 && (
+                      <div className="mt-1 flex flex-col gap-2">
+                        <label className="font-mono text-[8px] text-dark-muted uppercase tracking-widest block font-black">
+                          UPLOADED FILES ({uploadedFiles.length})
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[220px] overflow-y-auto pr-1 no-scrollbar">
+                          {uploadedFiles.map((file) => {
+                            const isRep = file.id === representativeId;
+                            return (
+                              <div
+                                key={file.id}
+                                className={`flex items-center gap-2.5 p-2 rounded-xs border transition-all ${
+                                  isRep
+                                    ? 'border-accent bg-accent/5'
+                                    : 'border-dark-border bg-dark-bg/30 hover:border-dark-border/80'
+                                }`}
+                              >
+                                {file.type === 'image' ? (
+                                  <img
+                                    src={file.url}
+                                    alt=""
+                                    className="w-10 h-10 object-cover rounded-xs border border-dark-border shrink-0"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                ) : (
+                                  <div className="w-10 h-10 bg-dark-bg border border-dark-border rounded-xs flex items-center justify-center shrink-0">
+                                    <Film size={14} className="text-accent" />
+                                  </div>
+                                )}
+
+                                <div className="flex-1 min-w-0 text-left">
+                                  <p className="font-sans text-[10px] text-white font-bold truncate" title={file.name}>
+                                    {file.name}
+                                  </p>
+                                  <p className="font-mono text-[8px] text-dark-muted uppercase">
+                                    {file.type}
+                                  </p>
+                                </div>
+
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {file.type === 'image' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSetRepresentative(file.id)}
+                                      className={`p-1 rounded-xs transition-colors cursor-pointer select-none ${
+                                        isRep
+                                          ? 'bg-accent/15 text-accent border border-accent/20'
+                                          : 'hover:bg-dark-bg border border-transparent text-dark-muted hover:text-white'
+                                      }`}
+                                      title={isRep ? "현재 대표 이미지 지정됨" : "대표 이미지로 지정"}
+                                    >
+                                      <Star size={11} fill={isRep ? 'currentColor' : 'none'} />
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveUploadedFile(file.id)}
+                                    className="p-1 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 text-dark-muted hover:text-red-500 rounded-xs transition-colors cursor-pointer select-none"
+                                    title="제거"
+                                  >
+                                    <Trash2 size={11} />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Photo Link */}
                   <div className="flex flex-col gap-2">
