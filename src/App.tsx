@@ -57,6 +57,26 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<{ isSyncing: boolean; total: number; current: number } | null>(null);
   const [currentTab, setCurrentTab] = useState<string>('home'); // 'home', 'philosophy', 'gallery', 'admin'
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+
+  const [isStaticMode, setIsStaticModeState] = useState(() => {
+    try {
+      const saved = localStorage.getItem('orange_archive_v2_static_mode');
+      // Default to true as the user requested converting to static website
+      return saved === null ? true : saved === 'true';
+    } catch {
+      return true;
+    }
+  });
+
+  const setIsStaticMode = (val: boolean) => {
+    setIsStaticModeState(val);
+    try {
+      localStorage.setItem('orange_archive_v2_static_mode', val ? 'true' : 'false');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const [isAdminLoggedIn, setIsAdminLoggedInState] = useState(() => {
     try {
       return localStorage.getItem('orange_archive_v2_admin_logged_in') === 'true';
@@ -207,18 +227,35 @@ export default function App() {
       };
 
       try {
-        const isDev = isDevelopmentWorkspace();
-
         // 1. Retrieve all possible local projects from physical storage caches (IndexedDB/Local Browser)
         let localProjectsList = await getLocalProjects();
         localProjectsList = localProjectsList.filter(p => !isForbidden(p));
+
+        let finalProjects: Project[] = [];
+
+        if (isStaticMode) {
+          console.log('Static mode is ACTIVE. Bypassing Firestore fetch.');
+          if (localProjectsList.length > 0) {
+            finalProjects = localProjectsList;
+          } else {
+            // If local storage is empty, boot with pre-compiled initialProjects (Source Code baseline)
+            console.log('Local storage empty in static mode. Loading initialProjects template baseline.');
+            finalProjects = initialProjects.filter(p => !isForbidden(p));
+            if (finalProjects.length > 0) {
+              try {
+                localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(finalProjects));
+                await BulletproofDB.saveAll(finalProjects);
+              } catch (_) {}
+            }
+          }
+          setProjects(finalProjects);
+          return;
+        }
 
         // 2. Fetch from cloud (Firestore) as the primary source
         console.log('Fetching projects from Firestore cloud...');
         let cloudProjects = await loadProjectsFromFirestore();
         
-        let finalProjects: Project[] = [];
-
         if (cloudProjects && cloudProjects.length > 0) {
           cloudProjects = cloudProjects.filter(p => !isForbidden(p));
           console.log(`Successfully loaded ${cloudProjects.length} projects from cloud.`);
@@ -257,7 +294,7 @@ export default function App() {
     };
 
     bootstrapData();
-  }, []);
+  }, [isStaticMode]);
 
   const updateLocalAndOfflineCache = async (updated: Project[]) => {
     setProjects(updated);
@@ -280,6 +317,10 @@ export default function App() {
   const handleAddProject = async (p: Project) => {
     const updated = [p, ...projects];
     await updateLocalAndOfflineCache(updated);
+    if (isStaticMode) {
+      console.log('Static mode active. Bypassing Firestore save.');
+      return;
+    }
     try {
       await saveProjectToFirestore(p);
       console.log('Successfully auto-saved new project to Firestore cloud.');
@@ -291,6 +332,10 @@ export default function App() {
   const handleUpdateProject = async (p: Project) => {
     const updated = projects.map((orig) => (orig.id === p.id ? p : orig));
     await updateLocalAndOfflineCache(updated);
+    if (isStaticMode) {
+      console.log('Static mode active. Bypassing Firestore save.');
+      return;
+    }
     try {
       await saveProjectToFirestore(p);
       console.log('Successfully auto-saved updated project to Firestore cloud.');
@@ -302,6 +347,10 @@ export default function App() {
   const handleDeleteProject = async (id: string) => {
     const updated = projects.filter((p) => p.id !== id);
     await updateLocalAndOfflineCache(updated);
+    if (isStaticMode) {
+      console.log('Static mode active. Bypassing Firestore delete.');
+      return;
+    }
     try {
       await deleteProjectFromFirestore(id);
       console.log('Successfully auto-deleted project from Firestore cloud.');
@@ -475,6 +524,8 @@ export default function App() {
                 onRestoreFromLocalBackup={handleRestoreFromLocalBackup}
                 isAdminLoggedIn={isAdminLoggedIn}
                 setIsAdminLoggedIn={setIsAdminLoggedIn}
+                isStaticMode={isStaticMode}
+                setIsStaticMode={setIsStaticMode}
               />
             </motion.div>
           ) : (

@@ -18,6 +18,8 @@ interface AdminPanelProps {
   onRestoreFromLocalBackup?: () => Promise<void> | void;
   isAdminLoggedIn: boolean;
   setIsAdminLoggedIn: (val: boolean) => void;
+  isStaticMode: boolean;
+  setIsStaticMode: (val: boolean) => void;
 }
 
 export default function AdminPanel({
@@ -31,12 +33,15 @@ export default function AdminPanel({
   onPullFromCloud,
   onRestoreFromLocalBackup,
   isAdminLoggedIn,
-  setIsAdminLoggedIn
+  setIsAdminLoggedIn,
+  isStaticMode,
+  setIsStaticMode
 }: AdminPanelProps) {
   const isDev = isDevelopmentWorkspace();
   const [passwordInput, setPasswordInput] = useState('');
   const [passError, setPassError] = useState(false);
   const [isPullingCloud, setIsPullingCloud] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
   const [hasLocalBackup, setHasLocalBackup] = useState(() => {
     try {
       return !!localStorage.getItem('orange_archive_v2_backup_projects');
@@ -118,6 +123,45 @@ export default function AdminPanel({
       }
     } catch (_) {}
     return msg;
+  };
+
+  const handleCopyStaticCode = () => {
+    try {
+      const servicesArray = [
+        {
+          id: 's1',
+          title: '사진 촬영',
+          englishTitle: 'PHOTOGRAPHY',
+          description: '기하학적인 자연광 분석과 최상급 상업 조명 장비를 결합하여 오브제와 인물의 본질적 깊이를 포획합니다. 단순한 평면 기록이 아닌, 하셀블라드 기만의 공간감과 심도를 프레임 안에 입체적으로 설계합니다.',
+          capabilities: ['하이 패션 룩북', '건축 스페이스 아카이빙', '프리미엄 미니멀 초상', '라이프스타일 브랜드 컷']
+        },
+        {
+          id: 's2',
+          title: '영상 촬영',
+          englishTitle: 'VIDEOGRAPHY & CINEMA',
+          description: '이야기와 감정의 궤도를 정밀하게 추적하는 고화질 시네마 레코딩을 주도합니다. 철저한 마스터 샷 계획, 조명 동선 설계, 핸드헬드와 정적 삼각대 구도를 결합해 세련되고 극적인 시각 서사를 가꿉니다.',
+          capabilities: ['크리에이티브 다큐멘터리', '브랜드 무비 & 패션필름', '비주얼 루프 아키텍쳐', '4K/6K RAW 시네마 레코딩']
+        }
+      ];
+
+      const jsonProjects = JSON.stringify(projects, null, 2);
+      const jsonServices = JSON.stringify(servicesArray, null, 2);
+
+      const fileContent = `import { Project, ServiceDetail } from './types';
+
+export const initialProjects: Project[] = ${jsonProjects};
+
+export const services: ServiceDetail[] = ${jsonServices};
+`;
+
+      navigator.clipboard.writeText(fileContent);
+      showToast('정적 소스 코드가 클립보드에 복사되었습니다! src/initialProjects.ts 에 붙여넣으세요.', 'success');
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 3000);
+    } catch (e) {
+      console.error(e);
+      showToast('코드 복사에 실패했습니다.', 'error');
+    }
   };
 
   const handleManualForceSync = async () => {
@@ -800,81 +844,160 @@ export default function AdminPanel({
           </button>
         </div>
 
-        {/* Highly prominent Cloud Preview Synchronization Dashboard Panel */}
-        {onForceSyncToCloud && (
-          <div className="mb-8 p-5 bg-emerald-950/15 border border-emerald-500/40 rounded-sm shadow-md flex flex-col xl:flex-row items-center justify-between gap-6 transition-all duration-300 hover:border-emerald-500/60 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500" />
-            <div className="flex gap-4 text-left">
-              <div className="p-3 bg-emerald-500/10 rounded-full text-emerald-400 shrink-0 self-start">
-                <Database size={20} className={isSyncingCloud || isPullingCloud ? 'animate-bounce' : ''} />
+        {/* Runtime Mode Selector (Static SPA vs Cloud Sync) */}
+        <div className="mb-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-dark-card border border-dark-border p-4 rounded-sm text-left">
+          <div className="flex-grow">
+            <span className="font-syne text-[10px] font-bold text-accent uppercase tracking-widest block">
+              [ WEBSITE RUNTIME SYSTEM // 웹사이트 구동 방식 설정 ]
+            </span>
+            <p className="text-xs font-sans text-dark-muted mt-1 leading-relaxed">
+              <strong>정적 사이트(Static SPA) 모드</strong>를 활성화하면 Firebase 데이터베이스 연동 및 접근 권한 제한 없이, 내장된 데이터 파일과 브라우저 캐시만으로 초고속 단독 정적 구동됩니다.
+            </p>
+          </div>
+          <div className="flex items-center gap-3 shrink-0 self-end md:self-center">
+            <span className="font-sans text-xs font-bold text-white select-none">
+              {isStaticMode ? '정적 단독형 웹사이트 (Static SPA)' : '클라우드 실시간 동기화'}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setIsStaticMode(!isStaticMode);
+                showToast(
+                  !isStaticMode 
+                    ? "정적 단독형 웹사이트 모드가 활성화되었습니다. 데이터베이스 접근 에러가 발생하지 않습니다." 
+                    : "클라우드 데이터 실시간 동기화 모드로 전환되었습니다.", 
+                  "success"
+                );
+              }}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                isStaticMode ? 'bg-accent font-bold' : 'bg-dark-border'
+              }`}
+              id="admin-runtime-mode-toggle"
+              title="구동 방식 스위치"
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-black shadow ring-0 transition duration-200 ease-in-out ${
+                  isStaticMode ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* Dynamic Panel rendering based on mode */}
+        {isStaticMode ? (
+          <div className="mb-8 p-5 bg-accent/5 border border-accent/40 rounded-sm shadow-md flex flex-col xl:flex-row items-center justify-between gap-6 transition-all duration-300 hover:border-accent/60 relative overflow-hidden text-left w-full">
+            <div className="absolute top-0 left-0 w-1.5 h-full bg-accent" />
+            <div className="flex gap-4">
+              <div className="p-3 bg-accent/10 rounded-full text-accent shrink-0 self-start">
+                <Database size={20} />
               </div>
               <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <h4 className="font-syne text-sm font-bold text-emerald-400 uppercase tracking-wider">
-                    클라우드 데이터 동기화 제어 센터 (Cloud Sync Center)
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <h4 className="font-syne text-sm font-bold text-white uppercase tracking-wider">
+                    정적 단독 구동 제어 센터 (Static SPA Center)
                   </h4>
-                  <span className="flex items-center gap-1 font-mono text-[9px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full uppercase">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    ONLINE SYNC ACTIVE
+                  <span className="flex items-center gap-1 font-mono text-[9px] text-accent bg-accent/10 px-1.5 py-0.5 rounded-full uppercase">
+                    <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+                    PURE OFFLINE STATIC ACTIVE
                   </span>
                 </div>
                 <p className="font-sans text-xs text-dark-muted leading-relaxed max-w-3xl">
-                  구글 AI 스튜디오 프리뷰 환경과 배포된 Netlify 웹사이트 간에 포트폴리오 데이터를 완벽하게 실시간 동기화할 수 있습니다.
+                  현재 웹사이트는 Firebase 데이터베이스 연결을 원천 우회하고, <strong className="text-accent">100% 독립적인 오프라인/정적 모드</strong>로 작동 중입니다. 로딩 지연이 전혀 없고 권한 에러 걱정이 없습니다.
                   <br />
-                  • <strong className="text-emerald-400">클라우드 데이터 저장 ↗</strong>: 현재 화면의 포트폴리오/사진촬영 데이터를 클라우드 데이터베이스에 영구 저장하여 Netlify 등 다른 기기에서 가져갈 수 있게 합니다.
-                  <br />
-                  • <strong className="text-emerald-400">클라우드 데이터 가져오기 ↙</strong>: 클라우드에 보관된 최신 포트폴리오 데이터를 현재 브라우저로 가져와 화면에 즉시 적용합니다. (실행 전 자동으로 로컬 백업이 생성됩니다)
+                  수정 사항을 배포 사이트(Netlify 등)에 영구 반영하시려면, 아래 버튼을 눌러 소스코드를 복사한 뒤 에디터의 <code className="text-white bg-dark-bg/80 px-1 py-0.5 rounded font-mono text-[11px]">src/initialProjects.ts</code> 파일의 내용 전체에 그대로 덮어씌워 배포(빌드)하시면 됩니다!
                 </p>
               </div>
             </div>
             
-            <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto shrink-0">
+            <div className="shrink-0 w-full xl:w-auto">
               <button
                 type="button"
-                onClick={handleManualForceSync}
-                disabled={isSyncingCloud || isPullingCloud}
-                className={`shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 shadow-lg ${
-                  isSyncingCloud
-                    ? 'bg-dark-card border border-dark-border text-dark-muted animate-pulse cursor-not-allowed shadow-none'
-                    : 'bg-emerald-500 text-black hover:bg-emerald-400 hover:shadow-emerald-500/20 active:scale-[0.98] cursor-pointer'
-                }`}
-                id="admin-main-cloud-sync-btn"
+                onClick={handleCopyStaticCode}
+                className="w-full xl:w-auto shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 bg-accent text-black hover:bg-accent/80 hover:shadow-accent/20 active:scale-[0.98] cursor-pointer"
               >
-                <Database size={13} className={isSyncingCloud ? 'animate-spin' : ''} />
-                <span>{isSyncingCloud ? '동기화 전송 중...' : '클라우드 데이터 저장 ↗'}</span>
+                <Save size={13} />
+                <span>{copiedCode ? '복사 완료! ✔' : 'initialProjects.ts 소스 복사 ↗'}</span>
               </button>
-
-              {onPullFromCloud && (
-                <button
-                  type="button"
-                  onClick={handleManualPull}
-                  disabled={isSyncingCloud || isPullingCloud}
-                  className={`shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 border shadow-lg ${
-                    isPullingCloud
-                      ? 'bg-dark-card border border-dark-border text-dark-muted animate-pulse cursor-not-allowed shadow-none'
-                      : 'border-emerald-500/50 bg-transparent text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-400 active:scale-[0.98] cursor-pointer'
-                  }`}
-                  id="admin-main-cloud-pull-btn"
-                >
-                  <Download size={13} className={isPullingCloud ? 'animate-spin' : ''} />
-                  <span>{isPullingCloud ? '데이터 로드 중...' : '클라우드 데이터 가져오기 ↙'}</span>
-                </button>
-              )}
-
-              {onRestoreFromLocalBackup && hasLocalBackup && (
-                <button
-                  type="button"
-                  onClick={handleManualRestore}
-                  disabled={isSyncingCloud || isPullingCloud}
-                  className="shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 border border-amber-500/40 bg-amber-950/20 text-amber-400 hover:bg-amber-500/15 hover:border-amber-400 active:scale-[0.98] cursor-pointer shadow-lg"
-                  id="admin-restore-backup-btn"
-                >
-                  <RotateCcw size={13} />
-                  <span>최근 로컬 백업 복원 ↺</span>
-                </button>
-              )}
             </div>
           </div>
+        ) : (
+          /* Highly prominent Cloud Preview Synchronization Dashboard Panel */
+          onForceSyncToCloud && (
+            <div className="mb-8 p-5 bg-emerald-950/15 border border-emerald-500/40 rounded-sm shadow-md flex flex-col xl:flex-row items-center justify-between gap-6 transition-all duration-300 hover:border-emerald-500/60 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500" />
+              <div className="flex gap-4 text-left">
+                <div className="p-3 bg-emerald-500/10 rounded-full text-emerald-400 shrink-0 self-start">
+                  <Database size={20} className={isSyncingCloud || isPullingCloud ? 'animate-bounce' : ''} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h4 className="font-syne text-sm font-bold text-emerald-400 uppercase tracking-wider">
+                      클라우드 데이터 동기화 제어 센터 (Cloud Sync Center)
+                    </h4>
+                    <span className="flex items-center gap-1 font-mono text-[9px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full uppercase">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      ONLINE SYNC ACTIVE
+                    </span>
+                  </div>
+                  <p className="font-sans text-xs text-dark-muted leading-relaxed max-w-3xl">
+                    구글 AI 스튜디오 프리뷰 환경과 배포된 Netlify 웹사이트 간에 포트폴리오 데이터를 완벽하게 실시간 동기화할 수 있습니다.
+                    <br />
+                    • <strong className="text-emerald-400">클라우드 데이터 저장 ↗</strong>: 현재 화면의 포트폴리오/사진촬영 데이터를 클라우드 데이터베이스에 영구 저장하여 Netlify 등 다른 기기에서 가져갈 수 있게 합니다.
+                    <br />
+                    • <strong className="text-emerald-400">클라우드 데이터 가져오기 ↙</strong>: 클라우드에 보관된 최신 포트폴리오 데이터를 현재 브라우저로 가져와 화면에 즉시 적용합니다. (실행 전 자동으로 로컬 백업이 생성됩니다)
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto shrink-0">
+                <button
+                  type="button"
+                  onClick={handleManualForceSync}
+                  disabled={isSyncingCloud || isPullingCloud}
+                  className={`shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 shadow-lg ${
+                    isSyncingCloud
+                      ? 'bg-dark-card border border-dark-border text-dark-muted animate-pulse cursor-not-allowed shadow-none'
+                      : 'bg-emerald-500 text-black hover:bg-emerald-400 hover:shadow-emerald-500/20 active:scale-[0.98] cursor-pointer'
+                  }`}
+                  id="admin-main-cloud-sync-btn"
+                >
+                  <Database size={13} className={isSyncingCloud ? 'animate-spin' : ''} />
+                  <span>{isSyncingCloud ? '동기화 전송 중...' : '클라우드 데이터 저장 ↗'}</span>
+                </button>
+
+                {onPullFromCloud && (
+                  <button
+                    type="button"
+                    onClick={handleManualPull}
+                    disabled={isSyncingCloud || isPullingCloud}
+                    className={`shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 border shadow-lg ${
+                      isPullingCloud
+                        ? 'bg-dark-card border border-dark-border text-dark-muted animate-pulse cursor-not-allowed shadow-none'
+                        : 'border-emerald-500/50 bg-transparent text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-400 active:scale-[0.98] cursor-pointer'
+                    }`}
+                    id="admin-main-cloud-pull-btn"
+                  >
+                    <Download size={13} className={isPullingCloud ? 'animate-spin' : ''} />
+                    <span>{isPullingCloud ? '데이터 로드 중...' : '클라우드 데이터 가져오기 ↙'}</span>
+                  </button>
+                )}
+
+                {onRestoreFromLocalBackup && hasLocalBackup && (
+                  <button
+                    type="button"
+                    onClick={handleManualRestore}
+                    disabled={isSyncingCloud || isPullingCloud}
+                    className="shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 border border-amber-500/40 bg-amber-950/20 text-amber-400 hover:bg-amber-500/15 hover:border-amber-400 active:scale-[0.98] cursor-pointer shadow-lg"
+                    id="admin-restore-backup-btn"
+                  >
+                    <RotateCcw size={13} />
+                    <span>최근 로컬 백업 복원 ↺</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )
         )}
 
         {/* Outer Split layout */}
