@@ -16,6 +16,7 @@ import { Project, CategoryFilter } from './types';
 import { AnimatePresence, motion } from 'motion/react';
 import { Sliders, Play, Settings, Landmark, ShieldCheck, Lock, Unlock, X, ArrowRight, RefreshCw } from 'lucide-react';
 import { BulletproofDB } from './utils/db';
+import { isDevelopmentWorkspace } from './utils/isDev';
 import {
   loadProjectsFromFirestore,
   saveProjectToFirestore,
@@ -85,7 +86,15 @@ export default function App() {
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState(false);
 
+  // Auto-redirect if somehow landed on admin screen in non-dev public link
+  useEffect(() => {
+    if (currentTab === 'admin' && !isDevelopmentWorkspace()) {
+      setCurrentTab('home');
+    }
+  }, [currentTab]);
+
   const handleAdminClick = () => {
+    if (!isDevelopmentWorkspace()) return; // block admin entirely on public shared links
     if (isAdminLoggedIn) {
       setCurrentTab('admin');
       window.scrollTo({ top: 0, behavior: 'instant' });

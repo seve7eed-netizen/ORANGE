@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Lock, Unlock, Clock, Menu, X } from 'lucide-react';
+import { isDevelopmentWorkspace } from '../utils/isDev';
 
 interface HeaderProps {
   currentTab: string;
@@ -21,6 +22,7 @@ export default function Header({
 }: HeaderProps) {
   const [time, setTime] = useState<string>('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isDev = isDevelopmentWorkspace();
 
   useEffect(() => {
     const updateTime = () => {
@@ -117,35 +119,37 @@ export default function Header({
             <span className="text-dark-muted select-none">TRACK RUNNING</span>
           </div>
 
-          {/* Admin Panel Access Button */}
-          {currentTab === 'admin' && isAdmin ? (
-            <button
-              onClick={onLogout}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-sm border border-red-950/40 bg-red-950/20 text-red-400 font-mono text-[10px] tracking-wider font-semibold cursor-pointer hover:bg-red-900/35 hover:text-red-300 transition-all duration-300 group"
-              id="header-logout-btn"
-            >
-              <Unlock size={11} className="text-red-400" />
-              <span>LOGOUT</span>
-            </button>
-          ) : (
-            <button
-              onClick={onAdminClick}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-sm border font-mono text-[10px] tracking-wider font-semibold cursor-pointer transition-all duration-300 group ${
-                isAdmin 
-                ? 'border-accent/40 bg-accent-dim text-accent hover:bg-accent hover:text-black' 
-                : 'border-dark-border bg-dark-card text-dark-muted hover:border-accent hover:text-accent'
-              }`}
-              id="header-admin-btn"
-            >
-              {isAdmin ? <Unlock size={11} /> : <Lock size={11} className="group-hover:text-accent transition-colors" />}
-              <span>WORKSPACE</span>
-            </button>
+          {/* Admin Panel Access Button - Only rendered in personal Dev Workspace */}
+          {isDev && (
+            currentTab === 'admin' && isAdmin ? (
+              <button
+                onClick={onLogout}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-sm border border-red-950/40 bg-red-950/20 text-red-400 font-mono text-[10px] tracking-wider font-semibold cursor-pointer hover:bg-red-900/35 hover:text-red-300 transition-all duration-300 group"
+                id="header-logout-btn"
+              >
+                <Unlock size={11} className="text-red-400" />
+                <span>LOGOUT</span>
+              </button>
+            ) : (
+              <button
+                onClick={onAdminClick}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-sm border font-mono text-[10px] tracking-wider font-semibold cursor-pointer transition-all duration-300 group ${
+                  isAdmin 
+                  ? 'border-accent/40 bg-accent-dim text-accent hover:bg-accent hover:text-black' 
+                  : 'border-dark-border bg-dark-card text-dark-muted hover:border-accent hover:text-accent'
+                }`}
+                id="header-admin-btn"
+              >
+                {isAdmin ? <Unlock size={11} /> : <Lock size={11} className="group-hover:text-accent transition-colors" />}
+                <span>WORKSPACE</span>
+              </button>
+            )
           )}
         </div>
 
         {/* Mobile controls */}
         <div className="flex items-center gap-4 md:hidden">
-          {isAdmin && (
+          {isDev && isAdmin && (
             <span className="text-accent font-mono text-[10px] px-2 py-0.5 rounded-xs border border-accent/20 bg-accent-dim">
               ADMIN
             </span>
@@ -184,30 +188,32 @@ export default function Header({
           <div className="h-[1px] bg-dark-border my-1" />
 
           {/* Mobile Admin Mode trigger */}
-          {currentTab === 'admin' && isAdmin ? (
-            <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                onLogout();
-              }}
-              className="flex items-center gap-2 text-red-400 font-mono text-xs tracking-wider cursor-pointer"
-            >
-              <Unlock size={12} className="text-red-400" />
-              <span>LOGOUT</span>
-            </button>
-          ) : (
-            <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                onAdminClick();
-              }}
-              className={`flex items-center gap-2 font-mono text-xs tracking-wider transition-colors cursor-pointer ${
-                isAdmin ? 'text-accent hover:text-white' : 'text-dark-muted hover:text-accent'
-              }`}
-            >
-              {isAdmin ? <Unlock size={12} /> : <Lock size={12} />}
-              <span>WORKSPACE</span>
-            </button>
+          {isDev && (
+            currentTab === 'admin' && isAdmin ? (
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  onLogout();
+                }}
+                className="flex items-center gap-2 text-red-400 font-mono text-xs tracking-wider cursor-pointer"
+              >
+                <Unlock size={12} className="text-red-400" />
+                <span>LOGOUT</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  onAdminClick();
+                }}
+                className={`flex items-center gap-2 font-mono text-xs tracking-wider transition-colors cursor-pointer ${
+                  isAdmin ? 'text-accent hover:text-white' : 'text-dark-muted hover:text-accent'
+                }`}
+              >
+                {isAdmin ? <Unlock size={12} /> : <Lock size={12} />}
+                <span>WORKSPACE</span>
+              </button>
+            )
           )}
         </motion.div>
       )}

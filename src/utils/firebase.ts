@@ -293,16 +293,18 @@ export async function markProjectAsDeletedInFirestore(id: string): Promise<void>
  */
 export async function seedProjectsToFirestore(projects: Project[]): Promise<void> {
   try {
-    const batch = writeBatch(db);
-    
     const querySnapshot = await getDocs(collection(db, PROJECTS_COLLECTION));
-    querySnapshot.forEach((docSnap) => {
-      if (docSnap.id !== '__deleted_metadata__') {
-        batch.delete(docSnap.ref);
-      }
-    });
+    
+    // 1. Delete all existing project documents individually to avoid atomic batch limits
+    await Promise.all(
+      querySnapshot.docs.map(async (docSnap) => {
+        if (docSnap.id !== '__deleted_metadata__') {
+          await deleteDoc(docSnap.ref);
+        }
+      })
+    );
 
-    // Process all projects and their images in parallel for maximum speed and efficiency
+    // 2. Process all projects and their images in parallel for maximum speed and efficiency
     const processedProjects = await Promise.all(projects.map(async (project) => {
       const cloudProject = { ...project };
       
@@ -337,16 +339,17 @@ export async function seedProjectsToFirestore(projects: Project[]): Promise<void
       return cloudProject;
     }));
 
-    for (const cloudProject of processedProjects) {
-      const docRef = doc(db, PROJECTS_COLLECTION, cloudProject.id);
-      batch.set(docRef, cloudProject);
-    }
+    // 3. Save each processed project individually using setDoc (bypasses the 10MB batch size ceiling)
+    await Promise.all(
+      processedProjects.map(async (cloudProject) => {
+        const docRef = doc(db, PROJECTS_COLLECTION, cloudProject.id);
+        await setDoc(docRef, cloudProject);
+      })
+    );
 
-    // Explicitly mark database as seeded in the metadata document
+    // 4. Explicitly mark database as seeded in the metadata document
     const metaRef = doc(db, PROJECTS_COLLECTION, '__deleted_metadata__');
-    batch.set(metaRef, { seeded: true }, { merge: true });
-
-    await batch.commit();
+    await setDoc(metaRef, { seeded: true }, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, PROJECTS_COLLECTION);
   }
