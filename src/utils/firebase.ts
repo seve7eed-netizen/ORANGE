@@ -302,9 +302,11 @@ export async function seedProjectsToFirestore(projects: Project[]): Promise<void
       }
     });
 
-    for (const project of projects) {
-      const docRef = doc(db, PROJECTS_COLLECTION, project.id);
+    // Process all projects and their images in parallel for maximum speed and efficiency
+    const processedProjects = await Promise.all(projects.map(async (project) => {
       const cloudProject = { ...project };
+      
+      // Keep video URLs clean (remove raw video blobs to protect Cloud Storage)
       if (cloudProject.videoUrl && cloudProject.videoUrl.startsWith('data:')) {
         delete cloudProject.videoUrl;
       }
@@ -314,20 +316,29 @@ export async function seedProjectsToFirestore(projects: Project[]): Promise<void
           delete cloudProject.videoUrls;
         }
       }
+
+      // Aggressive parallel compression of cover images (max Resolution 450, quality 0.30)
       if (cloudProject.coverImage && cloudProject.coverImage.startsWith('data:')) {
-        cloudProject.coverImage = await compressBase64IfNeeded(cloudProject.coverImage, 500, 0.35);
+        cloudProject.coverImage = await compressBase64IfNeeded(cloudProject.coverImage, 450, 0.30);
       }
+
+      // Aggressive parallel compression of gallery/additional images (max Resolution 350, quality 0.25)
       if (cloudProject.additionalImages) {
-        const compressedList: string[] = [];
-        for (const imgUrl of cloudProject.additionalImages) {
-          if (imgUrl && imgUrl.startsWith('data:')) {
-            compressedList.push(await compressBase64IfNeeded(imgUrl, 400, 0.30));
-          } else {
-            compressedList.push(imgUrl);
-          }
-        }
-        cloudProject.additionalImages = compressedList;
+        cloudProject.additionalImages = await Promise.all(
+          cloudProject.additionalImages.map(async (imgUrl) => {
+            if (imgUrl && imgUrl.startsWith('data:')) {
+              return await compressBase64IfNeeded(imgUrl, 350, 0.25);
+            }
+            return imgUrl;
+          })
+        );
       }
+
+      return cloudProject;
+    }));
+
+    for (const cloudProject of processedProjects) {
+      const docRef = doc(db, PROJECTS_COLLECTION, cloudProject.id);
       batch.set(docRef, cloudProject);
     }
 
@@ -349,6 +360,8 @@ export async function saveProjectToFirestore(project: Project): Promise<void> {
   try {
     const docRef = doc(db, PROJECTS_COLLECTION, project.id);
     const cloudProject = { ...project };
+    
+    // Clean local heavy video files before writing to Firestore
     if (cloudProject.videoUrl && cloudProject.videoUrl.startsWith('data:')) {
       delete cloudProject.videoUrl;
     }
@@ -358,20 +371,24 @@ export async function saveProjectToFirestore(project: Project): Promise<void> {
         delete cloudProject.videoUrls;
       }
     }
+
+    // Aggressively compress cover image (max 450px, quality 0.30)
     if (cloudProject.coverImage && cloudProject.coverImage.startsWith('data:')) {
-      cloudProject.coverImage = await compressBase64IfNeeded(cloudProject.coverImage, 500, 0.35);
+      cloudProject.coverImage = await compressBase64IfNeeded(cloudProject.coverImage, 450, 0.30);
     }
+
+    // Aggressively compress additional images (max 350px, quality 0.25)
     if (cloudProject.additionalImages) {
-      const compressedList: string[] = [];
-      for (const imgUrl of cloudProject.additionalImages) {
-        if (imgUrl && imgUrl.startsWith('data:')) {
-          compressedList.push(await compressBase64IfNeeded(imgUrl, 400, 0.30));
-        } else {
-          compressedList.push(imgUrl);
-        }
-      }
-      cloudProject.additionalImages = compressedList;
+      cloudProject.additionalImages = await Promise.all(
+        cloudProject.additionalImages.map(async (imgUrl) => {
+          if (imgUrl && imgUrl.startsWith('data:')) {
+            return await compressBase64IfNeeded(imgUrl, 350, 0.25);
+          }
+          return imgUrl;
+        })
+      );
     }
+
     await setDoc(docRef, cloudProject, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
