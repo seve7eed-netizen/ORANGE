@@ -199,8 +199,31 @@ export default function App() {
     let unsubscribe: (() => void) | null = null;
 
     const bootstrapData = async () => {
+      const forbiddenIds = ['p1', 'p2', 'p3'];
+      const forbiddenTitles = [
+        'ECHOS OF ARCHITECTURE',
+        'THE CHRONO VISUALS',
+        'CINEMATIC SILENCE'
+      ];
+      const isForbidden = (p: Project) => {
+        if (!p) return true;
+        if (forbiddenIds.includes(p.id)) return true;
+        if (p.title && forbiddenTitles.includes(p.title.toUpperCase().trim())) return true;
+        return false;
+      };
+
       // 1. Retrieve all possible local projects from physical storage caches (PC/Local Browser)
       let localProjectsList = await getLocalProjects();
+      
+      // Clean up forbidden default projects from local list
+      const originalLocalCount = localProjectsList.length;
+      localProjectsList = localProjectsList.filter(p => !isForbidden(p));
+      if (localProjectsList.length !== originalLocalCount) {
+        try {
+          localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(localProjectsList));
+          await BulletproofDB.saveAll(localProjectsList);
+        } catch (_) {}
+      }
 
       // 2. Load deleted IDs & Seeded status from Firestore metadata
       let deletedIds: string[] = [];
@@ -231,6 +254,22 @@ export default function App() {
       try {
         let cloudProjects = await loadProjectsFromFirestore();
         if (cloudProjects) {
+          // Clean up forbidden default projects in Firestore if they exist
+          const forbiddenInCloud = cloudProjects.filter(isForbidden);
+          if (forbiddenInCloud.length > 0) {
+            console.log('Cleaning up forbidden default projects from Firestore cloud:', forbiddenInCloud.map(p => p.title));
+            for (const fp of forbiddenInCloud) {
+              try {
+                await deleteProjectFromFirestore(fp.id);
+                await markProjectAsDeletedInFirestore(fp.id);
+              } catch (e) {
+                console.warn('Failed to delete forbidden project from cloud:', fp.id, e);
+              }
+            }
+          }
+
+          cloudProjects = cloudProjects.filter(p => !isForbidden(p));
+
           if (deletedSet.size > 0) {
             cloudProjects = cloudProjects.filter(p => p && p.id && !deletedSet.has(p.id));
           }

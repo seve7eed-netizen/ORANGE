@@ -678,6 +678,22 @@ export default function AdminPanel({
           </div>
 
           <div className="flex flex-wrap gap-2.5">
+            {onForceSyncToCloud && (
+              <button
+                type="button"
+                onClick={handleManualForceSync}
+                disabled={isSyncingCloud}
+                className={`flex items-center gap-1.5 p-2 px-3 border rounded-xs transition-all duration-300 cursor-pointer select-none font-mono text-[10px] uppercase font-bold tracking-wider ${
+                  isSyncingCloud 
+                    ? 'bg-dark-card border-dark-border text-dark-muted animate-pulse cursor-not-allowed'
+                    : 'border-emerald-500 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500 hover:text-black hover:shadow-lg hover:shadow-emerald-500/15'
+                }`}
+                id="admin-cloud-sync-btn-header"
+              >
+                <Database size={11} className={isSyncingCloud ? 'animate-spin' : ''} />
+                <span>{isSyncingCloud ? 'SYNCING...' : 'PREVIEW로 데이터 전송 (SYNC TO CLOUD)'}</span>
+              </button>
+            )}
             <button
               onClick={handleHardSave}
               disabled={isHardSaving}
@@ -714,7 +730,7 @@ export default function AdminPanel({
         </div>
 
         {/* Iframe Storage Security Alert Banner */}
-        <div className="mb-8 p-4 bg-orange-950/20 border border-accent/30 rounded-xs flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs">
+        <div className="mb-6 p-4 bg-orange-950/20 border border-accent/30 rounded-xs flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs">
           <div className="flex gap-3 text-left">
             <span className="text-xl leading-none">💡</span>
             <div>
@@ -734,6 +750,48 @@ export default function AdminPanel({
             [새 창(홈페이지)에서 관리자 열기]
           </button>
         </div>
+
+        {/* Highly prominent Cloud Preview Synchronization Dashboard Panel */}
+        {onForceSyncToCloud && (
+          <div className="mb-8 p-5 bg-emerald-950/15 border border-emerald-500/40 rounded-sm shadow-md flex flex-col sm:flex-row items-center justify-between gap-6 transition-all duration-300 hover:border-emerald-500/60 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500" />
+            <div className="flex gap-4 text-left">
+              <div className="p-3 bg-emerald-500/10 rounded-full text-emerald-400 shrink-0 self-start">
+                <Database size={20} className={isSyncingCloud ? 'animate-bounce' : ''} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <h4 className="font-syne text-sm font-bold text-emerald-400 uppercase tracking-wider">
+                    프리뷰 화면 데이터 전송 & 클라우드 영구 동기화
+                  </h4>
+                  <span className="flex items-center gap-1 font-mono text-[9px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full uppercase">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    ONLINE SYNC ACTIVE
+                  </span>
+                </div>
+                <p className="font-sans text-xs text-dark-muted leading-relaxed max-w-3xl">
+                  이 버튼을 누르면 현재 로컬 디바이스 및 브라우저에서 작업 중인 <strong>모든 전시물 정보가 중앙 클라우드 데이터베이스(Firestore)로 즉각 안전하게 전송 및 복제</strong>됩니다. 
+                  우측의 <strong>Shared App (공유된 프리뷰) 페이지와 100% 실시간 동기화</strong>되어 새로고침(Reload)이나 브라우저 캐시 삭제 시에도 작업물이 안전하게 유지됩니다.
+                </p>
+              </div>
+            </div>
+            
+            <button
+              type="button"
+              onClick={handleManualForceSync}
+              disabled={isSyncingCloud}
+              className={`shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 shadow-lg ${
+                isSyncingCloud
+                  ? 'bg-dark-card border border-dark-border text-dark-muted animate-pulse cursor-not-allowed shadow-none'
+                  : 'bg-emerald-500 text-black hover:bg-emerald-400 hover:shadow-emerald-500/20 active:scale-[0.98] cursor-pointer'
+              }`}
+              id="admin-main-cloud-sync-btn"
+            >
+              <Database size={13} className={isSyncingCloud ? 'animate-spin' : ''} />
+              <span>{isSyncingCloud ? '동기화 전송 중...' : 'PREVIEW로 데이터 전송 ↗'}</span>
+            </button>
+          </div>
+        )}
 
         {/* Outer Split layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
