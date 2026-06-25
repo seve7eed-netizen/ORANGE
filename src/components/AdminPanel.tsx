@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Project, CategoryFilter } from '../types';
 import { Lock, Unlock, Plus, Trash2, Edit2, Download, Upload, RotateCcw, AlertTriangle, FileText, Check, ArrowRight, Image as ImageIcon, Film, Video, Star, Save, Database } from 'lucide-react';
 import { BulletproofDB } from '../utils/db';
+import { compressBase64IfNeeded } from '../utils/firebase';
 
 interface AdminPanelProps {
   projects: Project[];
@@ -340,8 +341,12 @@ export default function AdminPanel({
   // Fallback to ReadAsDataURL for safety
   const readAsDataUrlFallback = (fileObj: File) => {
     const reader = new FileReader();
-    reader.onload = (event) => {
-      const resultUrl = event.target?.result as string;
+    reader.onload = async (event) => {
+      let resultUrl = event.target?.result as string;
+      if (resultUrl && resultUrl.startsWith('data:image/')) {
+        showToast(`"${fileObj.name}" 이미지의 예비 최적화 압축을 진행 중입니다...`, 'info');
+        resultUrl = await compressBase64IfNeeded(resultUrl, 600, 0.4);
+      }
       const newFile = {
         id: 'file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
         url: resultUrl,
@@ -356,7 +361,7 @@ export default function AdminPanel({
         }
         return updated;
       });
-      showToast(`"${fileObj.name}" 이미지 복구 형식을 통해 안전하게 업로드되었습니다.`, 'success');
+      showToast(`"${fileObj.name}" 이미지 복구 형식을 통해 최적화 완료 및 업로드되었습니다.`, 'success');
     };
     reader.readAsDataURL(fileObj);
   };

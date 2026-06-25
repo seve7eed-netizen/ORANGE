@@ -80,14 +80,29 @@ export async function compressBase64IfNeeded(
   }
 
   return new Promise((resolve) => {
+    let resolved = false;
+    
+    // Safety timeout: resolve with the original string if image loading hangs for > 2.5 seconds
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        console.warn('Image compression timed out inside micro-scaler, resolving with original base64.');
+        resolve(base64Str);
+      }
+    }, 2500);
+
     // Check if we are running in a browser context with canvas support
     if (typeof window === 'undefined' || typeof document === 'undefined') {
+      clearTimeout(timeout);
       resolve(base64Str);
       return;
     }
 
     const img = new Image();
     img.onload = () => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeout);
       try {
         const canvas = document.createElement('canvas');
         let width = img.width;
@@ -125,6 +140,9 @@ export async function compressBase64IfNeeded(
       }
     };
     img.onerror = () => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeout);
       resolve(base64Str);
     };
     img.src = base64Str;

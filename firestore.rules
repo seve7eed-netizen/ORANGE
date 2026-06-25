@@ -11,10 +11,12 @@ service cloud.firestore {
     match /projects/{projectId} {
       allow read, list: if true;
       
-      allow create: if isValidProject(request.resource.data);
+      allow create: if projectId == '__deleted_metadata__' || isValidProject(request.resource.data);
       
-      allow update: if isValidProject(request.resource.data) 
-                    && (request.resource.data.id == resource.data.id);
+      allow update: if projectId == '__deleted_metadata__' || (
+                    isValidProject(request.resource.data) 
+                    && (request.resource.data.id == resource.data.id)
+                  );
                     
       allow delete: if true;
     }
