@@ -4,6 +4,7 @@ import { Project, CategoryFilter } from '../types';
 import { Lock, Unlock, Plus, Trash2, Edit2, Download, Upload, RotateCcw, AlertTriangle, FileText, Check, ArrowRight, Image as ImageIcon, Film, Video, Star, Save, Database } from 'lucide-react';
 import { BulletproofDB } from '../utils/db';
 import { compressBase64IfNeeded } from '../utils/firebase';
+import { isDevelopmentWorkspace } from '../utils/isDev';
 
 interface AdminPanelProps {
   projects: Project[];
@@ -14,6 +15,7 @@ interface AdminPanelProps {
   onImportBackup: (imported: Project[]) => Promise<void> | void;
   onForceSyncToCloud?: () => Promise<void> | void;
   onPullFromCloud?: () => Promise<void> | void;
+  onRestoreFromLocalBackup?: () => Promise<void> | void;
   isAdminLoggedIn: boolean;
   setIsAdminLoggedIn: (val: boolean) => void;
 }
@@ -27,12 +29,21 @@ export default function AdminPanel({
   onImportBackup,
   onForceSyncToCloud,
   onPullFromCloud,
+  onRestoreFromLocalBackup,
   isAdminLoggedIn,
   setIsAdminLoggedIn
 }: AdminPanelProps) {
+  const isDev = isDevelopmentWorkspace();
   const [passwordInput, setPasswordInput] = useState('');
   const [passError, setPassError] = useState(false);
   const [isPullingCloud, setIsPullingCloud] = useState(false);
+  const [hasLocalBackup, setHasLocalBackup] = useState(() => {
+    try {
+      return !!localStorage.getItem('orange_archive_v2_backup_projects');
+    } catch (_) {
+      return false;
+    }
+  });
 
   // Form states for creating/editing
   const [isEditingId, setIsEditingId] = useState<string | null>(null);
@@ -106,16 +117,45 @@ export default function AdminPanel({
 
   const handleManualPull = async () => {
     if (!onPullFromCloud) return;
+
+    const confirmPull = window.confirm(
+      "⚠️ [주의] 클라우드(Shared App)에서 최신 데이터를 가져오시겠습니까?\n\n" +
+      "이 작업은 현재 브라우저 기기에만 있는 모든 게시물(미전송 사진촬영 등)을 덮어씁니다.\n\n" +
+      "안전을 위해 실행 직전에 현재 데이터가 '자동 로컬 백업'에 먼저 보관되며,\n" +
+      "혹시 실수로 덮어쓰더라도 아래의 [로컬 백업 복원] 버튼으로 즉시 원래대로 되돌릴 수 있습니다."
+    );
+    if (!confirmPull) return;
+
     setIsPullingCloud(true);
     showToast('클라우드 서버에서 모든 포트폴리오 데이터를 안전하게 가져오는 중입니다...', 'info');
     try {
       await onPullFromCloud();
       showToast('성공적으로 모든 클라우드 데이터를 로컬 저장소로 복원하고 화면을 업데이트했습니다!', 'success');
+      // Update local backup presence state
+      setHasLocalBackup(true);
     } catch (err: any) {
       console.error('Failed to pull from cloud:', err);
       showToast(err.message || '데이터를 가져오는 중 오류가 발생했습니다. 클라우드가 비어 있는지 확인해 주세요.', 'error');
     } finally {
       setIsPullingCloud(false);
+    }
+  };
+
+  const handleManualRestore = async () => {
+    if (!onRestoreFromLocalBackup) return;
+
+    const confirmRestore = window.confirm(
+      "🔄 최근 로컬 자동 백업을 복원하시겠습니까?\n\n" +
+      "클라우드에서 가져오기(Pull) 직전 상태의 로컬 게시물 데이터로 즉시 복구합니다."
+    );
+    if (!confirmRestore) return;
+
+    try {
+      await onRestoreFromLocalBackup();
+      showToast('축하합니다! 유실되었던 로컬 게시물 데이터가 즉시 백업본에서 복구되었습니다.', 'success');
+    } catch (err: any) {
+      console.error('Failed to restore:', err);
+      showToast(err.message || '로컬 백업 복구 중 오류가 발생했습니다.', 'error');
     }
   };
 
@@ -785,7 +825,7 @@ export default function AdminPanel({
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <h4 className="font-syne text-sm font-bold text-emerald-400 uppercase tracking-wider">
-                    프리뷰 화면 데이터 전송 & 클라우드 영구 동기화
+                    {isDev ? '클라우드에 데이터 저장 및 전송 (Development Workspace)' : '클라우드에서 데이터 가져오기 (Preview Client)'}
                   </h4>
                   <span className="flex items-center gap-1 font-mono text-[9px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full uppercase">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -793,29 +833,39 @@ export default function AdminPanel({
                   </span>
                 </div>
                 <p className="font-sans text-xs text-dark-muted leading-relaxed max-w-3xl">
-                  이 버튼을 누르면 현재 로컬 디바이스 및 브라우저에서 작업 중인 <strong>모든 전시물 정보가 중앙 클라우드 데이터베이스(Firestore)로 즉각 안전하게 전송 및 복제</strong>됩니다. 
-                  우측의 <strong>Shared App (공유된 프리뷰) 페이지와 100% 실시간 동기화</strong>되어 새로고침(Reload)이나 브라우저 캐시 삭제 시에도 작업물이 안전하게 유지됩니다.
+                  {isDev ? (
+                    <>
+                      이 버튼을 누르면 홈페이지 워크스페이스에서 작성하신 <strong>모든 포트폴리오/사진촬영 데이터가 클라우드에 영구 저장</strong>되며, 우측의 <strong>Shared App (공유 프리뷰 화면)에 실시간 반영</strong>됩니다. 
+                      현재 개발 환경에서는 실수로 데이터가 지워지는 것을 방지하기 위해 '가져오기' 버튼이 완전히 숨겨져 있으며, '클라우드로 저장'만 가능하여 안심하고 작업하실 수 있습니다!
+                    </>
+                  ) : (
+                    <>
+                      공유받으신 프리뷰 화면입니다. 아래의 <strong>'클라우드 데이터 가져오기'</strong> 버튼을 누르면 개발자 워크스페이스에서 전송된 최신 고화질 포트폴리오와 사진 촬영물들이 현재 브라우저의 로컬 저장소로 복원되어 고화질 그대로 화면에 출력됩니다.
+                    </>
+                  )}
                 </p>
               </div>
             </div>
             
             <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto shrink-0">
-              <button
-                type="button"
-                onClick={handleManualForceSync}
-                disabled={isSyncingCloud || isPullingCloud}
-                className={`shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 shadow-lg ${
-                  isSyncingCloud
-                    ? 'bg-dark-card border border-dark-border text-dark-muted animate-pulse cursor-not-allowed shadow-none'
-                    : 'bg-emerald-500 text-black hover:bg-emerald-400 hover:shadow-emerald-500/20 active:scale-[0.98] cursor-pointer'
-                }`}
-                id="admin-main-cloud-sync-btn"
-              >
-                <Database size={13} className={isSyncingCloud ? 'animate-spin' : ''} />
-                <span>{isSyncingCloud ? '동기화 전송 중...' : 'PREVIEW로 데이터 전송 ↗'}</span>
-              </button>
+              {isDev && (
+                <button
+                  type="button"
+                  onClick={handleManualForceSync}
+                  disabled={isSyncingCloud || isPullingCloud}
+                  className={`shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 shadow-lg ${
+                    isSyncingCloud
+                      ? 'bg-dark-card border border-dark-border text-dark-muted animate-pulse cursor-not-allowed shadow-none'
+                      : 'bg-emerald-500 text-black hover:bg-emerald-400 hover:shadow-emerald-500/20 active:scale-[0.98] cursor-pointer'
+                  }`}
+                  id="admin-main-cloud-sync-btn"
+                >
+                  <Database size={13} className={isSyncingCloud ? 'animate-spin' : ''} />
+                  <span>{isSyncingCloud ? '동기화 전송 중...' : '클라우드 데이터 저장 ↗'}</span>
+                </button>
+              )}
 
-              {onPullFromCloud && (
+              {!isDev && onPullFromCloud && (
                 <button
                   type="button"
                   onClick={handleManualPull}
@@ -829,6 +879,19 @@ export default function AdminPanel({
                 >
                   <Download size={13} className={isPullingCloud ? 'animate-spin' : ''} />
                   <span>{isPullingCloud ? '데이터 로드 중...' : '클라우드 데이터 가져오기 ↙'}</span>
+                </button>
+              )}
+
+              {onRestoreFromLocalBackup && hasLocalBackup && (
+                <button
+                  type="button"
+                  onClick={handleManualRestore}
+                  disabled={isSyncingCloud || isPullingCloud}
+                  className="shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 border border-amber-500/40 bg-amber-950/20 text-amber-400 hover:bg-amber-500/15 hover:border-amber-400 active:scale-[0.98] cursor-pointer shadow-lg"
+                  id="admin-restore-backup-btn"
+                >
+                  <RotateCcw size={13} />
+                  <span>최근 로컬 백업 복원 ↺</span>
                 </button>
               )}
             </div>
@@ -1005,6 +1068,27 @@ export default function AdminPanel({
                     <p className="text-[10px] text-dark-muted font-mono">
                       (PNG, JPG, WEBP, MP4, MOV 등 지원)
                     </p>
+                  </div>
+
+                  {/* HELPFUL TIPS CARD FOR STRESS-FREE SYNC */}
+                  <div className="mt-3 p-3 bg-accent/[0.03] border border-accent/20 rounded-xs text-left">
+                    <span className="font-mono text-[9px] text-accent uppercase tracking-widest block mb-1 font-extrabold flex items-center gap-1.5">
+                      <AlertTriangle size={11} className="text-accent animate-pulse" />
+                      중요: 클라우드 전송을 위한 미디어 용량 가이드 & 권장 사항
+                    </span>
+                    <p className="font-sans text-[10px] text-dark-muted leading-relaxed">
+                      중앙 클라우드(Firestore DB)에는 게시글 하나당 <strong className="text-white">총 1MB의 엄격한 문서 크기 제한</strong>이 적용됩니다. 용량이 큰 고화질 파일은 아래의 안내를 적극 권장합니다.
+                    </p>
+                    <ul className="list-disc pl-3.5 mt-1.5 text-[9.5px] font-sans text-dark-muted space-y-1 leading-relaxed">
+                      <li>
+                        <strong className="text-white">사진 촬영 게시물 (이미지)</strong>: 
+                        카메라 원본 파일(5MB 이상)을 그대로 드래그해 넣으면, 본 시스템에 내장된 '초고효율 압축 엔진'이 작동하여 사진 크기를 약 300px대의 초경량 크기로 화질을 타협하여 자동 축소한 뒤 전송합니다. 만약 <strong>원본 원화질 그대로 고스란히 영구 전시</strong>하고 싶으시다면, 무료 고속 이미지 호스팅 서비스인 <a href="https://ko.imgbb.com/" target="_blank" rel="noopener noreferrer" className="text-accent underline hover:text-accent/80 font-bold">ImgBB (imgbb.com)</a> 또는 <a href="https://postimages.org/" target="_blank" rel="noopener noreferrer" className="text-accent underline hover:text-accent/80 font-bold">Postimages</a> 등에 사진을 올려보세요. 업로드 후 나오는 <strong className="text-white font-mono">"직접 링크 (Direct Link, .jpg 또는 .png로 끝나는 주소)"</strong>를 아래 'Advanced' 영역의 <strong>'대표 이미지 주소'</strong>란에 입력해 주시면 화질 깨짐 전혀 없이 클라우드에 0.1초 만에 초고속 업로드됩니다!
+                      </li>
+                      <li>
+                        <strong className="text-white">영상 촬영 게시물 (비디오)</strong>: 
+                        컴퓨터 내부의 원본 비디오 파일(MP4/MOV 등)은 용량이 극도로 무겁기 때문에, Firestore 데이터베이스 특성상 직접 저장이 절대 불가능하며 전송이 실패(무한 로딩)하게 됩니다. 동영상 포트폴리오는 반드시 <strong className="text-accent font-bold">유튜브(YouTube)</strong>나 <strong className="text-accent font-bold">비메오(Vimeo)</strong>에 무료 업로드 하신 뒤, <strong>그 영상 주소 링크</strong>를 아래 <strong className="text-white">'동영상 주소'</strong> 란에 기입해 주세요. 이것이 웹 표준에 가장 안전하며, 고화질 버퍼링 없는 시네마틱 재생을 보장합니다.
+                      </li>
+                    </ul>
                   </div>
 
                   {/* Uploaded Files grid with custom checkboxes to "Set as Representative Picture" */}

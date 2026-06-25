@@ -205,44 +205,43 @@ export default function App() {
       };
 
       try {
+        const isDev = isDevelopmentWorkspace();
+
         // 1. Retrieve all possible local projects from physical storage caches (IndexedDB/Local Browser)
         let localProjectsList = await getLocalProjects();
-        
-        // Clean up forbidden default projects from local list
-        const originalLocalCount = localProjectsList.length;
         localProjectsList = localProjectsList.filter(p => !isForbidden(p));
-        if (localProjectsList.length !== originalLocalCount) {
-          try {
-            localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(localProjectsList));
-            await BulletproofDB.saveAll(localProjectsList);
-          } catch (_) {}
-        }
 
-        if (localProjectsList.length > 0) {
-          console.log(`Successfully booted offline-first! Loaded ${localProjectsList.length} projects locally.`);
+        // If in development workspace, boot offline-first to protect and speed up local edits
+        if (isDev && localProjectsList.length > 0) {
+          console.log(`[Dev Workspace] Successfully booted offline-first! Loaded ${localProjectsList.length} projects locally.`);
           setProjects(localProjectsList);
           return;
         }
 
-        // 2. Fetch from cloud as fallback if local store is empty (clean device / initial load)
-        console.log('Local store empty. Performing initial fetch of projects from Firestore...');
+        // 2. Fetch from cloud (Firestore) as the primary source for guests/visitors in the Preview environment
+        console.log('Fetching projects from Firestore cloud...');
         let cloudProjects = await loadProjectsFromFirestore();
         if (cloudProjects && cloudProjects.length > 0) {
           cloudProjects = cloudProjects.filter(p => !isForbidden(p));
-          console.log(`Loaded ${cloudProjects.length} projects from cloud fallback.`);
+          console.log(`Successfully loaded ${cloudProjects.length} projects from cloud.`);
           setProjects(cloudProjects);
           try {
             localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(cloudProjects));
             await BulletproofDB.saveAll(cloudProjects);
           } catch (_) {}
         } else {
-          // 3. Fallback to default initial portfolio projects if both local and cloud are empty
-          console.log('Both local and cloud stores empty. Loading initial defaults.');
-          setProjects(initialProjects);
-          try {
-            localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(initialProjects));
-            await BulletproofDB.saveAll(initialProjects);
-          } catch (_) {}
+          // Fallback to local storage or defaults if cloud is empty
+          if (localProjectsList.length > 0) {
+            console.log(`Cloud was empty. Loaded ${localProjectsList.length} projects from local storage.`);
+            setProjects(localProjectsList);
+          } else {
+            console.log('Both local and cloud stores empty. Loading initial defaults.');
+            setProjects(initialProjects);
+            try {
+              localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(initialProjects));
+              await BulletproofDB.saveAll(initialProjects);
+            } catch (_) {}
+          }
         }
       } catch (err) {
         console.warn('Bootstrapping failed, falling back to basic defaults:', err);
@@ -310,8 +309,20 @@ export default function App() {
     }
   };
 
+  const backupCurrentProjects = async (projectsToBackup: Project[]) => {
+    try {
+      console.log('Backing up current projects locally before destructive cloud pulling...');
+      localStorage.setItem('orange_archive_v2_backup_projects', JSON.stringify(projectsToBackup));
+    } catch (e) {
+      console.warn('Failed to save localStorage backup:', e);
+    }
+  };
+
   const handlePullFromCloud = async () => {
     try {
+      // 1. Back up current local projects before pulling to prevent catastrophic data loss
+      await backupCurrentProjects(projects);
+
       console.log('Manually pulling projects from Firestore cloud...');
       setSyncStatus({ isSyncing: true, total: 1, current: 0 });
       const cloudProjects = await loadProjectsFromFirestore();
@@ -325,6 +336,25 @@ export default function App() {
     } catch (e) {
       setSyncStatus(null);
       console.error('Force pull from cloud failed:', e);
+      throw e;
+    }
+  };
+
+  const handleRestoreFromLocalBackup = async () => {
+    try {
+      const backupStr = localStorage.getItem('orange_archive_v2_backup_projects');
+      if (!backupStr) {
+        throw new Error('이전에 백업된 최근 로컬 데이터가 존재하지 않습니다.');
+      }
+      const backupProjects = JSON.parse(backupStr) as Project[];
+      if (backupProjects && backupProjects.length > 0) {
+        await updateLocalAndOfflineCache(backupProjects);
+        console.log('Restored projects from local backup successfully.');
+      } else {
+        throw new Error('백업된 데이터가 비어 있습니다.');
+      }
+    } catch (e: any) {
+      console.error('Failed to restore from local backup:', e);
       throw e;
     }
   };
@@ -417,6 +447,7 @@ export default function App() {
                 onImportBackup={handleImportBackup}
                 onForceSyncToCloud={handleForceSyncToCloud}
                 onPullFromCloud={handlePullFromCloud}
+                onRestoreFromLocalBackup={handleRestoreFromLocalBackup}
                 isAdminLoggedIn={isAdminLoggedIn}
                 setIsAdminLoggedIn={setIsAdminLoggedIn}
               />
