@@ -11,7 +11,6 @@ import {
   query,
   getDoc
 } from 'firebase/firestore';
-import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { Project } from '../types';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -22,9 +21,6 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 }, firebaseConfig.firestoreDatabaseId || '(default)');
-
-// Initialize Firebase Storage
-export const storage = getStorage(app);
 
 const PROJECTS_COLLECTION = 'projects';
 
@@ -79,7 +75,7 @@ export async function compressBase64IfNeeded(
     return base64Str;
   }
   // If the base64 string is already reasonably small, bypass compression to save processing time
-  if (base64Str.length < 80000) {
+  if (base64Str.length < 15000) {
     return base64Str;
   }
 
@@ -293,53 +289,9 @@ export async function markProjectAsDeletedInFirestore(id: string): Promise<void>
 }
 
 /**
- * Uploads a base64 data URL string to Firebase Storage and returns the public download URL.
- * If the string is already a URL or is empty, it returns the string untouched.
- */
-export async function uploadBase64ToStorage(base64Str: string, folder = 'media'): Promise<string> {
-  if (!base64Str || !base64Str.startsWith('data:')) {
-    return base64Str;
-  }
-
-  try {
-    const mimeTypeMatch = base64Str.match(/^data:([^;]+);base64,/);
-    if (!mimeTypeMatch) {
-      return base64Str;
-    }
-    const mimeType = mimeTypeMatch[1];
-    const base64Data = base64Str.substring(mimeTypeMatch[0].length);
-
-    // Determine safe file extension
-    let ext = 'bin';
-    if (mimeType.includes('image/jpeg') || mimeType.includes('image/jpg')) ext = 'jpg';
-    else if (mimeType.includes('image/png')) ext = 'png';
-    else if (mimeType.includes('image/webp')) ext = 'webp';
-    else if (mimeType.includes('image/gif')) ext = 'gif';
-    else if (mimeType.includes('video/mp4')) ext = 'mp4';
-    else if (mimeType.includes('video/quicktime')) ext = 'mov';
-    else if (mimeType.includes('video/webm')) ext = 'webm';
-    else {
-      const parts = mimeType.split('/');
-      if (parts.length > 1) ext = parts[1];
-    }
-
-    const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const storageRef = ref(storage, `${folder}/${uniqueId}.${ext}`);
-
-    console.log(`Uploading base64 media (${mimeType}, size: ${base64Str.length}) to Firebase Storage path: ${folder}/${uniqueId}.${ext}...`);
-    await uploadString(storageRef, base64Data, 'base64', { contentType: mimeType });
-    const downloadUrl = await getDownloadURL(storageRef);
-    console.log(`Uploaded successfully! Public storage URL: ${downloadUrl}`);
-    return downloadUrl;
-  } catch (error) {
-    console.error('Failed to upload base64 to Firebase Storage:', error);
-    // Return original base64 as fallback so it doesn't break the app flow
-    return base64Str;
-  }
-}
-
-/**
  * Saves a list of projects into Firestore in a single batch.
+ * This function compresses images down into extremely light base64 representations and saves them directly in Firestore,
+ * bypassing the need for Firebase Storage.
  */
 export async function seedProjectsToFirestore(projects: Project[]): Promise<void> {
   try {
@@ -358,40 +310,30 @@ export async function seedProjectsToFirestore(projects: Project[]): Promise<void
     const processedProjects = await Promise.all(projects.map(async (project) => {
       const cloudProject = { ...project };
       
-      // Upload cover image
+      // Compress cover image to very compact size (max resolution 380, quality 0.3)
       if (cloudProject.coverImage && cloudProject.coverImage.startsWith('data:')) {
-        const compressed = await compressBase64IfNeeded(cloudProject.coverImage, 450, 0.30);
-        cloudProject.coverImage = await uploadBase64ToStorage(compressed, 'covers');
+        cloudProject.coverImage = await compressBase64IfNeeded(cloudProject.coverImage, 380, 0.30);
       }
 
-      // Upload additional gallery images
+      // Compress additional gallery images to compact size (max resolution 350, quality 0.25)
       if (cloudProject.additionalImages) {
         cloudProject.additionalImages = await Promise.all(
           cloudProject.additionalImages.map(async (imgUrl) => {
             if (imgUrl && imgUrl.startsWith('data:')) {
-              const compressed = await compressBase64IfNeeded(imgUrl, 350, 0.25);
-              return await uploadBase64ToStorage(compressed, 'gallery');
+              return await compressBase64IfNeeded(imgUrl, 350, 0.25);
             }
             return imgUrl;
           })
         );
       }
 
-      // Upload videoUrl
+      // Omit local raw video uploads (starts with data:video) when syncing to Cloud/Firestore to prevent crashing 1MB limit.
+      // Explain to user to input youtube/vimeo/external direct URLs instead for 1:1 cloud sharing.
       if (cloudProject.videoUrl && cloudProject.videoUrl.startsWith('data:')) {
-        cloudProject.videoUrl = await uploadBase64ToStorage(cloudProject.videoUrl, 'videos');
+        delete cloudProject.videoUrl;
       }
-
-      // Upload videoUrls list
       if (cloudProject.videoUrls) {
-        cloudProject.videoUrls = await Promise.all(
-          cloudProject.videoUrls.map(async (vUrl) => {
-            if (vUrl && vUrl.startsWith('data:')) {
-              return await uploadBase64ToStorage(vUrl, 'videos');
-            }
-            return vUrl;
-          })
-        );
+        cloudProject.videoUrls = cloudProject.videoUrls.filter(vUrl => vUrl && !vUrl.startsWith('data:'));
       }
 
       return cloudProject;
@@ -414,6 +356,72 @@ export async function seedProjectsToFirestore(projects: Project[]): Promise<void
 }
 
 /**
+ * Saves a list of projects into Firestore, supporting a step-by-step progress tracking callback.
+ */
+export async function seedProjectsToFirestoreWithProgress(
+  projects: Project[],
+  onProgress?: (current: number) => void
+): Promise<void> {
+  try {
+    const querySnapshot = await getDocs(collection(db, PROJECTS_COLLECTION));
+    
+    // 1. Delete all existing project documents individually to avoid atomic batch limits
+    await Promise.all(
+      querySnapshot.docs.map(async (docSnap) => {
+        if (docSnap.id !== '__deleted_metadata__') {
+          await deleteDoc(docSnap.ref);
+        }
+      })
+    );
+ 
+    let current = 0;
+    // 2. Upload one by one to track progress and handle failures gracefully
+    for (const project of projects) {
+      const cloudProject = { ...project };
+      
+      // Compress cover image to very compact size (max resolution 380, quality 0.3)
+      if (cloudProject.coverImage && cloudProject.coverImage.startsWith('data:')) {
+        cloudProject.coverImage = await compressBase64IfNeeded(cloudProject.coverImage, 380, 0.30);
+      }
+
+      // Compress additional gallery images to compact size (max resolution 350, quality 0.25)
+      if (cloudProject.additionalImages) {
+        cloudProject.additionalImages = await Promise.all(
+          cloudProject.additionalImages.map(async (imgUrl) => {
+            if (imgUrl && imgUrl.startsWith('data:')) {
+              return await compressBase64IfNeeded(imgUrl, 350, 0.25);
+            }
+            return imgUrl;
+          })
+        );
+      }
+
+      // Omit local raw video uploads (data:video) to protect Firestore document size limits
+      if (cloudProject.videoUrl && cloudProject.videoUrl.startsWith('data:')) {
+        delete cloudProject.videoUrl;
+      }
+      if (cloudProject.videoUrls) {
+        cloudProject.videoUrls = cloudProject.videoUrls.filter(vUrl => vUrl && !vUrl.startsWith('data:'));
+      }
+
+      const docRef = doc(db, PROJECTS_COLLECTION, cloudProject.id);
+      await setDoc(docRef, cloudProject);
+      
+      current++;
+      if (onProgress) {
+        onProgress(current);
+      }
+    }
+
+    // Explicitly mark database as seeded in the metadata document
+    const metaRef = doc(db, PROJECTS_COLLECTION, '__deleted_metadata__');
+    await setDoc(metaRef, { seeded: true }, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, PROJECTS_COLLECTION);
+  }
+}
+
+/**
  * Saves or updates a single project in Firestore.
  */
 export async function saveProjectToFirestore(project: Project): Promise<void> {
@@ -422,40 +430,29 @@ export async function saveProjectToFirestore(project: Project): Promise<void> {
     const docRef = doc(db, PROJECTS_COLLECTION, project.id);
     const cloudProject = { ...project };
     
-    // Upload cover image
+    // Compress cover image to compact base64
     if (cloudProject.coverImage && cloudProject.coverImage.startsWith('data:')) {
-      const compressed = await compressBase64IfNeeded(cloudProject.coverImage, 450, 0.30);
-      cloudProject.coverImage = await uploadBase64ToStorage(compressed, 'covers');
+      cloudProject.coverImage = await compressBase64IfNeeded(cloudProject.coverImage, 380, 0.30);
     }
 
-    // Upload additional gallery images
+    // Compress additional gallery images to compact base64
     if (cloudProject.additionalImages) {
       cloudProject.additionalImages = await Promise.all(
         cloudProject.additionalImages.map(async (imgUrl) => {
           if (imgUrl && imgUrl.startsWith('data:')) {
-            const compressed = await compressBase64IfNeeded(imgUrl, 350, 0.25);
-            return await uploadBase64ToStorage(compressed, 'gallery');
+            return await compressBase64IfNeeded(imgUrl, 350, 0.25);
           }
           return imgUrl;
         })
       );
     }
 
-    // Upload videoUrl
+    // Omit local raw video uploads (data:video) to protect Firestore document size limits
     if (cloudProject.videoUrl && cloudProject.videoUrl.startsWith('data:')) {
-      cloudProject.videoUrl = await uploadBase64ToStorage(cloudProject.videoUrl, 'videos');
+      delete cloudProject.videoUrl;
     }
-
-    // Upload videoUrls list
     if (cloudProject.videoUrls) {
-      cloudProject.videoUrls = await Promise.all(
-        cloudProject.videoUrls.map(async (vUrl) => {
-          if (vUrl && vUrl.startsWith('data:')) {
-            return await uploadBase64ToStorage(vUrl, 'videos');
-          }
-          return vUrl;
-        })
-      );
+      cloudProject.videoUrls = cloudProject.videoUrls.filter(vUrl => vUrl && !vUrl.startsWith('data:'));
     }
 
     await setDoc(docRef, cloudProject, { merge: true });

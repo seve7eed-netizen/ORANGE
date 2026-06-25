@@ -13,6 +13,7 @@ interface AdminPanelProps {
   onResetToDefault: () => Promise<void> | void;
   onImportBackup: (imported: Project[]) => Promise<void> | void;
   onForceSyncToCloud?: () => Promise<void> | void;
+  onPullFromCloud?: () => Promise<void> | void;
   isAdminLoggedIn: boolean;
   setIsAdminLoggedIn: (val: boolean) => void;
 }
@@ -25,11 +26,13 @@ export default function AdminPanel({
   onResetToDefault,
   onImportBackup,
   onForceSyncToCloud,
+  onPullFromCloud,
   isAdminLoggedIn,
   setIsAdminLoggedIn
 }: AdminPanelProps) {
   const [passwordInput, setPasswordInput] = useState('');
   const [passError, setPassError] = useState(false);
+  const [isPullingCloud, setIsPullingCloud] = useState(false);
 
   // Form states for creating/editing
   const [isEditingId, setIsEditingId] = useState<string | null>(null);
@@ -98,6 +101,21 @@ export default function AdminPanel({
       showToast('클라우드 동기화 실패: 네트워크가 지연되거나 대용량 첨부 이미지가 포함되어 있을 수 있습니다.', 'error');
     } finally {
       setIsSyncingCloud(false);
+    }
+  };
+
+  const handleManualPull = async () => {
+    if (!onPullFromCloud) return;
+    setIsPullingCloud(true);
+    showToast('클라우드 서버에서 모든 포트폴리오 데이터를 안전하게 가져오는 중입니다...', 'info');
+    try {
+      await onPullFromCloud();
+      showToast('성공적으로 모든 클라우드 데이터를 로컬 저장소로 복원하고 화면을 업데이트했습니다!', 'success');
+    } catch (err: any) {
+      console.error('Failed to pull from cloud:', err);
+      showToast(err.message || '데이터를 가져오는 중 오류가 발생했습니다. 클라우드가 비어 있는지 확인해 주세요.', 'error');
+    } finally {
+      setIsPullingCloud(false);
     }
   };
 
@@ -758,11 +776,11 @@ export default function AdminPanel({
 
         {/* Highly prominent Cloud Preview Synchronization Dashboard Panel */}
         {onForceSyncToCloud && (
-          <div className="mb-8 p-5 bg-emerald-950/15 border border-emerald-500/40 rounded-sm shadow-md flex flex-col sm:flex-row items-center justify-between gap-6 transition-all duration-300 hover:border-emerald-500/60 relative overflow-hidden">
+          <div className="mb-8 p-5 bg-emerald-950/15 border border-emerald-500/40 rounded-sm shadow-md flex flex-col xl:flex-row items-center justify-between gap-6 transition-all duration-300 hover:border-emerald-500/60 relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500" />
             <div className="flex gap-4 text-left">
               <div className="p-3 bg-emerald-500/10 rounded-full text-emerald-400 shrink-0 self-start">
-                <Database size={20} className={isSyncingCloud ? 'animate-bounce' : ''} />
+                <Database size={20} className={isSyncingCloud || isPullingCloud ? 'animate-bounce' : ''} />
               </div>
               <div>
                 <div className="flex items-center gap-2 mb-1">
@@ -781,20 +799,39 @@ export default function AdminPanel({
               </div>
             </div>
             
-            <button
-              type="button"
-              onClick={handleManualForceSync}
-              disabled={isSyncingCloud}
-              className={`shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 shadow-lg ${
-                isSyncingCloud
-                  ? 'bg-dark-card border border-dark-border text-dark-muted animate-pulse cursor-not-allowed shadow-none'
-                  : 'bg-emerald-500 text-black hover:bg-emerald-400 hover:shadow-emerald-500/20 active:scale-[0.98] cursor-pointer'
-              }`}
-              id="admin-main-cloud-sync-btn"
-            >
-              <Database size={13} className={isSyncingCloud ? 'animate-spin' : ''} />
-              <span>{isSyncingCloud ? '동기화 전송 중...' : 'PREVIEW로 데이터 전송 ↗'}</span>
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto shrink-0">
+              <button
+                type="button"
+                onClick={handleManualForceSync}
+                disabled={isSyncingCloud || isPullingCloud}
+                className={`shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 shadow-lg ${
+                  isSyncingCloud
+                    ? 'bg-dark-card border border-dark-border text-dark-muted animate-pulse cursor-not-allowed shadow-none'
+                    : 'bg-emerald-500 text-black hover:bg-emerald-400 hover:shadow-emerald-500/20 active:scale-[0.98] cursor-pointer'
+                }`}
+                id="admin-main-cloud-sync-btn"
+              >
+                <Database size={13} className={isSyncingCloud ? 'animate-spin' : ''} />
+                <span>{isSyncingCloud ? '동기화 전송 중...' : 'PREVIEW로 데이터 전송 ↗'}</span>
+              </button>
+
+              {onPullFromCloud && (
+                <button
+                  type="button"
+                  onClick={handleManualPull}
+                  disabled={isSyncingCloud || isPullingCloud}
+                  className={`shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 border shadow-lg ${
+                    isPullingCloud
+                      ? 'bg-dark-card border border-dark-border text-dark-muted animate-pulse cursor-not-allowed shadow-none'
+                      : 'border-emerald-500/50 bg-transparent text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-400 active:scale-[0.98] cursor-pointer'
+                  }`}
+                  id="admin-main-cloud-pull-btn"
+                >
+                  <Download size={13} className={isPullingCloud ? 'animate-spin' : ''} />
+                  <span>{isPullingCloud ? '데이터 로드 중...' : '클라우드 데이터 가져오기 ↙'}</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
 
