@@ -11,6 +11,7 @@ import {
   query,
   getDoc
 } from 'firebase/firestore';
+import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { Project } from '../types';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -21,6 +22,9 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 }, firebaseConfig.firestoreDatabaseId || '(default)');
+
+// Initialize Firebase Storage
+export const storage = getStorage(app);
 
 const PROJECTS_COLLECTION = 'projects';
 
@@ -289,6 +293,52 @@ export async function markProjectAsDeletedInFirestore(id: string): Promise<void>
 }
 
 /**
+ * Uploads a base64 data URL string to Firebase Storage and returns the public download URL.
+ * If the string is already a URL or is empty, it returns the string untouched.
+ */
+export async function uploadBase64ToStorage(base64Str: string, folder = 'media'): Promise<string> {
+  if (!base64Str || !base64Str.startsWith('data:')) {
+    return base64Str;
+  }
+
+  try {
+    const mimeTypeMatch = base64Str.match(/^data:([^;]+);base64,/);
+    if (!mimeTypeMatch) {
+      return base64Str;
+    }
+    const mimeType = mimeTypeMatch[1];
+    const base64Data = base64Str.substring(mimeTypeMatch[0].length);
+
+    // Determine safe file extension
+    let ext = 'bin';
+    if (mimeType.includes('image/jpeg') || mimeType.includes('image/jpg')) ext = 'jpg';
+    else if (mimeType.includes('image/png')) ext = 'png';
+    else if (mimeType.includes('image/webp')) ext = 'webp';
+    else if (mimeType.includes('image/gif')) ext = 'gif';
+    else if (mimeType.includes('video/mp4')) ext = 'mp4';
+    else if (mimeType.includes('video/quicktime')) ext = 'mov';
+    else if (mimeType.includes('video/webm')) ext = 'webm';
+    else {
+      const parts = mimeType.split('/');
+      if (parts.length > 1) ext = parts[1];
+    }
+
+    const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const storageRef = ref(storage, `${folder}/${uniqueId}.${ext}`);
+
+    console.log(`Uploading base64 media (${mimeType}, size: ${base64Str.length}) to Firebase Storage path: ${folder}/${uniqueId}.${ext}...`);
+    await uploadString(storageRef, base64Data, 'base64', { contentType: mimeType });
+    const downloadUrl = await getDownloadURL(storageRef);
+    console.log(`Uploaded successfully! Public storage URL: ${downloadUrl}`);
+    return downloadUrl;
+  } catch (error) {
+    console.error('Failed to upload base64 to Firebase Storage:', error);
+    // Return original base64 as fallback so it doesn't break the app flow
+    return base64Str;
+  }
+}
+
+/**
  * Saves a list of projects into Firestore in a single batch.
  */
 export async function seedProjectsToFirestore(projects: Project[]): Promise<void> {
@@ -303,35 +353,43 @@ export async function seedProjectsToFirestore(projects: Project[]): Promise<void
         }
       })
     );
-
-    // 2. Process all projects and their images in parallel for maximum speed and efficiency
+ 
+    // 2. Process all projects and their images/videos in parallel for maximum speed and efficiency
     const processedProjects = await Promise.all(projects.map(async (project) => {
       const cloudProject = { ...project };
       
-      // Keep video URLs clean (remove raw video blobs to protect Cloud Storage)
-      if (cloudProject.videoUrl && cloudProject.videoUrl.startsWith('data:')) {
-        delete cloudProject.videoUrl;
-      }
-      if (cloudProject.videoUrls) {
-        cloudProject.videoUrls = cloudProject.videoUrls.filter(url => !url.startsWith('data:'));
-        if (cloudProject.videoUrls.length === 0) {
-          delete cloudProject.videoUrls;
-        }
-      }
-
-      // Aggressive parallel compression of cover images (max Resolution 450, quality 0.30)
+      // Upload cover image
       if (cloudProject.coverImage && cloudProject.coverImage.startsWith('data:')) {
-        cloudProject.coverImage = await compressBase64IfNeeded(cloudProject.coverImage, 450, 0.30);
+        const compressed = await compressBase64IfNeeded(cloudProject.coverImage, 450, 0.30);
+        cloudProject.coverImage = await uploadBase64ToStorage(compressed, 'covers');
       }
 
-      // Aggressive parallel compression of gallery/additional images (max Resolution 350, quality 0.25)
+      // Upload additional gallery images
       if (cloudProject.additionalImages) {
         cloudProject.additionalImages = await Promise.all(
           cloudProject.additionalImages.map(async (imgUrl) => {
             if (imgUrl && imgUrl.startsWith('data:')) {
-              return await compressBase64IfNeeded(imgUrl, 350, 0.25);
+              const compressed = await compressBase64IfNeeded(imgUrl, 350, 0.25);
+              return await uploadBase64ToStorage(compressed, 'gallery');
             }
             return imgUrl;
+          })
+        );
+      }
+
+      // Upload videoUrl
+      if (cloudProject.videoUrl && cloudProject.videoUrl.startsWith('data:')) {
+        cloudProject.videoUrl = await uploadBase64ToStorage(cloudProject.videoUrl, 'videos');
+      }
+
+      // Upload videoUrls list
+      if (cloudProject.videoUrls) {
+        cloudProject.videoUrls = await Promise.all(
+          cloudProject.videoUrls.map(async (vUrl) => {
+            if (vUrl && vUrl.startsWith('data:')) {
+              return await uploadBase64ToStorage(vUrl, 'videos');
+            }
+            return vUrl;
           })
         );
       }
@@ -364,30 +422,38 @@ export async function saveProjectToFirestore(project: Project): Promise<void> {
     const docRef = doc(db, PROJECTS_COLLECTION, project.id);
     const cloudProject = { ...project };
     
-    // Clean local heavy video files before writing to Firestore
-    if (cloudProject.videoUrl && cloudProject.videoUrl.startsWith('data:')) {
-      delete cloudProject.videoUrl;
-    }
-    if (cloudProject.videoUrls) {
-      cloudProject.videoUrls = cloudProject.videoUrls.filter(url => !url.startsWith('data:'));
-      if (cloudProject.videoUrls.length === 0) {
-        delete cloudProject.videoUrls;
-      }
-    }
-
-    // Aggressively compress cover image (max 450px, quality 0.30)
+    // Upload cover image
     if (cloudProject.coverImage && cloudProject.coverImage.startsWith('data:')) {
-      cloudProject.coverImage = await compressBase64IfNeeded(cloudProject.coverImage, 450, 0.30);
+      const compressed = await compressBase64IfNeeded(cloudProject.coverImage, 450, 0.30);
+      cloudProject.coverImage = await uploadBase64ToStorage(compressed, 'covers');
     }
 
-    // Aggressively compress additional images (max 350px, quality 0.25)
+    // Upload additional gallery images
     if (cloudProject.additionalImages) {
       cloudProject.additionalImages = await Promise.all(
         cloudProject.additionalImages.map(async (imgUrl) => {
           if (imgUrl && imgUrl.startsWith('data:')) {
-            return await compressBase64IfNeeded(imgUrl, 350, 0.25);
+            const compressed = await compressBase64IfNeeded(imgUrl, 350, 0.25);
+            return await uploadBase64ToStorage(compressed, 'gallery');
           }
           return imgUrl;
+        })
+      );
+    }
+
+    // Upload videoUrl
+    if (cloudProject.videoUrl && cloudProject.videoUrl.startsWith('data:')) {
+      cloudProject.videoUrl = await uploadBase64ToStorage(cloudProject.videoUrl, 'videos');
+    }
+
+    // Upload videoUrls list
+    if (cloudProject.videoUrls) {
+      cloudProject.videoUrls = await Promise.all(
+        cloudProject.videoUrls.map(async (vUrl) => {
+          if (vUrl && vUrl.startsWith('data:')) {
+            return await uploadBase64ToStorage(vUrl, 'videos');
+          }
+          return vUrl;
         })
       );
     }

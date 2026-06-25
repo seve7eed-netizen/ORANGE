@@ -86,15 +86,7 @@ export default function App() {
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState(false);
 
-  // Auto-redirect if somehow landed on admin screen in non-dev public link
-  useEffect(() => {
-    if (currentTab === 'admin' && !isDevelopmentWorkspace()) {
-      setCurrentTab('home');
-    }
-  }, [currentTab]);
-
   const handleAdminClick = () => {
-    if (!isDevelopmentWorkspace()) return; // block admin entirely on public shared links
     if (isAdminLoggedIn) {
       setCurrentTab('admin');
       window.scrollTo({ top: 0, behavior: 'instant' });
