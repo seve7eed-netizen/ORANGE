@@ -483,43 +483,11 @@ export default function AdminPanel({
   const handleSaveProject = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Resolve cover, additional, and video from interactive uploaded files list
-    let finalCoverImage = coverImage;
-    let finalAddImages = additionalImagesRaw
-      .split(',')
-      .map((i) => i.trim())
-      .filter((i) => i.length > 0);
-    let finalVideoUrl = videoUrl;
-
-    if (uploadedFiles.length > 0) {
-      // Find selected representative
-      const selectedRep = uploadedFiles.find(f => f.id === representativeId && f.type === 'image');
-      if (selectedRep) {
-        finalCoverImage = selectedRep.url;
-      } else {
-        const firstImg = uploadedFiles.find(f => f.type === 'image');
-        if (firstImg) {
-          finalCoverImage = firstImg.url;
-        }
-      }
-
-      // Extract additional gallery images (all other images)
-      finalAddImages = uploadedFiles
-        .filter(f => f.type === 'image' && f.url !== finalCoverImage)
-        .map(f => f.url);
-    }
-
-    // Gather all unique video URLs from uploadedFiles and manually typed video fields
-    const fileVideos = uploadedFiles.filter(f => f.type === 'video').map(f => f.url);
-    const manualVideos = [videoUrl, ...videoUrls].map(v => v.trim()).filter(v => v.length > 0);
-    const uniqueVideos = Array.from(new Set([...fileVideos, ...manualVideos]));
-
-    if (uniqueVideos.length > 0) {
-      finalVideoUrl = uniqueVideos[0];
-    }
+    let finalCoverImage = coverImage.trim();
+    let finalVideoUrl = videoUrl.trim();
 
     if (!title || !client || !finalCoverImage) {
-      showToast('프로젝트명, 클라이언트명, 대표 커버 이미지는 필수 항목입니다.', 'error');
+      showToast('프로젝트명, 클라이언트명, 사진 링크는 필수 항목입니다.', 'error');
       return;
     }
 
@@ -543,9 +511,9 @@ export default function AdminPanel({
       tools: cleanedTools.length > 0 ? cleanedTools : ['Camera', 'Photoshop'],
       description: description || '등록된 프로젝트 세부 설명이 없습니다.',
       coverImage: finalCoverImage,
-      additionalImages: finalAddImages,
+      additionalImages: [],
       videoUrl: finalVideoUrl || undefined,
-      videoUrls: uniqueVideos.length > 0 ? uniqueVideos : undefined,
+      videoUrls: finalVideoUrl ? [finalVideoUrl] : undefined,
       featured
     };
 
@@ -560,7 +528,7 @@ export default function AdminPanel({
       })
       .catch((err) => {
         console.error('Failed to sync project:', err);
-        let errorMsg = '클라우드 저장 실패: 권한이 없거나 첨부된 이미지 데이터의 용량이 초과되었습니다.';
+        let errorMsg = '클라우드 저장 실패: 권한이 없거나 입력된 이미지 주소가 유효하지 않습니다.';
         if (err && typeof err === 'object' && err.message) {
           errorMsg = `저장 실패: ${err.message}`;
         }
@@ -741,22 +709,6 @@ export default function AdminPanel({
           </div>
 
           <div className="flex flex-wrap gap-2.5">
-            {onForceSyncToCloud && (
-              <button
-                type="button"
-                onClick={handleManualForceSync}
-                disabled={isSyncingCloud}
-                className={`flex items-center gap-1.5 p-2 px-3 border rounded-xs transition-all duration-300 cursor-pointer select-none font-mono text-[10px] uppercase font-bold tracking-wider ${
-                  isSyncingCloud 
-                    ? 'bg-dark-card border-dark-border text-dark-muted animate-pulse cursor-not-allowed'
-                    : 'border-emerald-500 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500 hover:text-black hover:shadow-lg hover:shadow-emerald-500/15'
-                }`}
-                id="admin-cloud-sync-btn-header"
-              >
-                <Database size={11} className={isSyncingCloud ? 'animate-spin' : ''} />
-                <span>{isSyncingCloud ? 'SYNCING...' : 'PREVIEW로 데이터 전송 (SYNC TO CLOUD)'}</span>
-              </button>
-            )}
             <button
               onClick={handleHardSave}
               disabled={isHardSaving}
@@ -769,25 +721,6 @@ export default function AdminPanel({
             >
               <Save size={11} className={isHardSaving ? 'animate-spin' : ''} />
               <span>[포트폴리오 강력보존 (SECURE HARD SAVE)]</span>
-            </button>
-            <button
-              onClick={() => {
-                onResetToDefault();
-                showToast('아카이브의 모든 포트폴리오 정보가 성공적으로 초기화되었습니다!', 'success');
-              }}
-              className="flex items-center gap-1.5 p-2 px-3 border border-red-500/10 hover:border-red-500 hover:text-red-400 bg-red-950/10 text-[10px] font-mono text-red-300 rounded-xs transition-colors cursor-pointer select-none"
-              id="admin-reset-to-defaults-btn"
-            >
-              <RotateCcw size={11} />
-              <span>[전체 아카이브 비우기 (WIPE ALL)]</span>
-            </button>
-            <button
-              onClick={() => setIsAdminLoggedIn(false)}
-              className="flex items-center gap-1.5 p-2 px-3 border border-accent/30 text-accent hover:bg-accent hover:text-black text-[10px] font-mono rounded-xs transition-all duration-300 cursor-pointer text-center select-none"
-              id="admin-lock-workspace-btn"
-            >
-              <Lock size={11} />
-              <span>[LOCK WORKSPACE]</span>
             </button>
           </div>
         </div>
@@ -1035,281 +968,48 @@ export default function AdminPanel({
                   />
                 </div>
 
-                {/* 1. Direct File Upload Zone */}
-                <div className="border border-dark-border bg-dark-bg/40 p-4 rounded-sm">
-                  <span className="font-mono text-[9px] text-accent uppercase tracking-widest block mb-2 font-black">
-                    [ GALLERY MEDIA UPLOAD // 직접 미디어 파일 업로드 ]
+                {/* 1. URL 입력 필드 (사진 링크 & 동영상 링크) */}
+                <div className="border border-dark-border bg-dark-bg/40 p-4 rounded-sm flex flex-col gap-4">
+                  <span className="font-mono text-[9px] text-accent uppercase tracking-widest block font-black">
+                    [ GALLERY MEDIA LINKS // 포트폴리오 직접 미디어 URL 입력 ]
                   </span>
-                  
-                  {/* Drag and Drop Container */}
-                  <div
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    className={`border-2 border-dashed rounded-sm p-6 text-center cursor-pointer transition-colors ${
-                      isDragging
-                        ? 'border-accent bg-accent/10'
-                        : 'border-dark-border/80 hover:border-accent/40 bg-dark-card/25'
-                    }`}
-                    onClick={() => document.getElementById('media-file-input')?.click()}
-                  >
-                    <input
-                      type="file"
-                      id="media-file-input"
-                      multiple
-                      accept="image/*,video/*"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
-                    <Upload size={24} className="mx-auto mb-2 text-dark-muted group-hover:text-accent" />
-                    <p className="text-xs text-white uppercase font-sans font-medium mb-1">
-                      클릭하거나 사진/동영상을 이 곳으로 드래그 하세요
-                    </p>
-                    <p className="text-[10px] text-dark-muted font-mono">
-                      (PNG, JPG, WEBP, MP4, MOV 등 지원)
-                    </p>
-                  </div>
 
-                  {/* HELPFUL TIPS CARD FOR STRESS-FREE SYNC */}
-                  <div className="mt-3 p-3 bg-accent/[0.03] border border-accent/20 rounded-xs text-left">
-                    <span className="font-mono text-[9px] text-accent uppercase tracking-widest block mb-1 font-extrabold flex items-center gap-1.5">
-                      <AlertTriangle size={11} className="text-accent animate-pulse" />
-                      중요: 클라우드 전송을 위한 미디어 용량 가이드 & 권장 사항
-                    </span>
-                    <p className="font-sans text-[10px] text-dark-muted leading-relaxed">
-                      중앙 클라우드(Firestore DB)에는 게시글 하나당 <strong className="text-white">총 1MB의 엄격한 문서 크기 제한</strong>이 적용됩니다. 용량이 큰 고화질 파일은 아래의 안내를 적극 권장합니다.
-                    </p>
-                    <ul className="list-disc pl-3.5 mt-1.5 text-[9.5px] font-sans text-dark-muted space-y-1 leading-relaxed">
-                      <li>
-                        <strong className="text-white">사진 촬영 게시물 (이미지)</strong>: 
-                        카메라 원본 파일(5MB 이상)을 그대로 드래그해 넣으면, 본 시스템에 내장된 '초고효율 압축 엔진'이 작동하여 사진 크기를 약 300px대의 초경량 크기로 화질을 타협하여 자동 축소한 뒤 전송합니다. 만약 <strong>원본 원화질 그대로 고스란히 영구 전시</strong>하고 싶으시다면, 무료 고속 이미지 호스팅 서비스인 <a href="https://ko.imgbb.com/" target="_blank" rel="noopener noreferrer" className="text-accent underline hover:text-accent/80 font-bold">ImgBB (imgbb.com)</a> 또는 <a href="https://postimages.org/" target="_blank" rel="noopener noreferrer" className="text-accent underline hover:text-accent/80 font-bold">Postimages</a> 등에 사진을 올려보세요. 업로드 후 나오는 <strong className="text-white font-mono">"직접 링크 (Direct Link, .jpg 또는 .png로 끝나는 주소)"</strong>를 아래 'Advanced' 영역의 <strong>'대표 이미지 주소'</strong>란에 입력해 주시면 화질 깨짐 전혀 없이 클라우드에 0.1초 만에 초고속 업로드됩니다!
-                      </li>
-                      <li>
-                        <strong className="text-white">영상 촬영 게시물 (비디오)</strong>: 
-                        컴퓨터 내부의 원본 비디오 파일(MP4/MOV 등)은 용량이 극도로 무겁기 때문에, Firestore 데이터베이스 특성상 직접 저장이 절대 불가능하며 전송이 실패(무한 로딩)하게 됩니다. 동영상 포트폴리오는 반드시 <strong className="text-accent font-bold">유튜브(YouTube)</strong>나 <strong className="text-accent font-bold">비메오(Vimeo)</strong>에 무료 업로드 하신 뒤, <strong>그 영상 주소 링크</strong>를 아래 <strong className="text-white">'동영상 주소'</strong> 란에 기입해 주세요. 이것이 웹 표준에 가장 안전하며, 고화질 버퍼링 없는 시네마틱 재생을 보장합니다.
-                      </li>
-                    </ul>
-                  </div>
-
-                  {/* Uploaded Files grid with custom checkboxes to "Set as Representative Picture" */}
-                  {uploadedFiles.length > 0 && (
-                    <div className="mt-4 border-t border-dark-border/40 pt-4">
-                      <span className="font-mono text-[9px] text-dark-muted uppercase tracking-widest block mb-1 font-extrabold">
-                        첨부 및 업로드된 파일 리스트 ({uploadedFiles.length})
-                      </span>
-                      <p className="text-[8px] font-mono text-dark-muted mb-2.5">
-                        ※ "대표로 지정" 박스를 선택하여 업로드물 중 대표 사진(커버)을 손쉽게 설정하여 주십시오.
-                      </p>
-                      <div className="flex flex-col gap-2 max-h-[220px] overflow-y-auto no-scrollbar">
-                        {uploadedFiles.map((file) => {
-                          const isRepresentative = file.id === representativeId;
-                          return (
-                            <div
-                              key={file.id}
-                              className={`flex items-center justify-between p-2 rounded-xs border text-left bg-dark-bg/65 ${
-                                isRepresentative ? 'border-accent bg-accent-dim/10' : 'border-dark-border/50'
-                              }`}
-                            >
-                              <div className="flex items-center gap-3 overflow-hidden flex-1">
-                                {/* Thumbnail */}
-                                <div className="h-10 w-12 bg-black border border-dark-border flex-shrink-0 overflow-hidden relative flex items-center justify-center rounded-xs">
-                                  {file.type === 'image' ? (
-                                    <img
-                                      src={file.url}
-                                      alt={file.name}
-                                      className="h-full w-full object-cover"
-                                      referrerPolicy="no-referrer"
-                                    />
-                                  ) : (
-                                    <Video size={14} className="text-accent" />
-                                  )}
-                                </div>
-                                <div className="overflow-hidden pr-2">
-                                  <p className="text-[10px] text-white truncate font-medium max-w-[150px] sm:max-w-xs">{file.name}</p>
-                                  <p className="font-mono text-[8px] text-dark-muted uppercase">
-                                    {file.type === 'image' ? 'IMAGE FILE' : 'VIDEO FILE'}
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-2">
-                                {/* Representative Setting Box */}
-                                {file.type === 'image' && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSetRepresentative(file.id)}
-                                    className={`flex items-center gap-1.5 py-1 px-2.5 border rounded-xs font-mono text-[8px] font-bold tracking-wider cursor-pointer transition-all ${
-                                      isRepresentative
-                                        ? 'bg-accent border-accent text-black font-black'
-                                        : 'border-dark-border/80 text-dark-muted hover:text-white hover:border-accent/40'
-                                    }`}
-                                    title="대표 사진(Cover)으로 지정"
-                                  >
-                                    {isRepresentative ? (
-                                      <>
-                                        <Check size={8} className="stroke-[3]" />
-                                        <span>[ 대표 사진 ]</span>
-                                      </>
-                                    ) : (
-                                      <span>[ 대표로 지정 ]</span>
-                                    )}
-                                  </button>
-                                )}
-
-                                {/* Delete button */}
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveUploadedFile(file.id)}
-                                  className="p-1 px-2 border border-red-900/30 text-red-400 hover:bg-red-950/20 rounded-xs hover:border-red-500/20 cursor-pointer transition-colors"
-                                  title="첨부 해제"
-                                >
-                                  <Trash2 size={10} />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Direct Video Link Field (High Visibility, Supports Multiple Links) */}
-                <div className="border border-dark-border bg-dark-bg/20 p-4 rounded-sm flex flex-col gap-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <Video size={13} className="text-accent" />
-                      <span className="font-mono text-[9px] text-accent uppercase tracking-widest block font-black">
-                        [ VIDEO STREAMING LINKS // 동영상 링크 관리 ]
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setVideoUrls([...videoUrls, ''])}
-                      className="flex items-center gap-1.5 px-2.5 py-1 bg-accent/10 border border-accent/30 rounded-xs text-[10px] text-accent font-mono font-bold uppercase hover:bg-accent/20 transition-all cursor-pointer"
-                    >
-                      <Plus size={10} />
-                      [ ADD LINK // 링크 추가 ]
-                    </button>
-                  </div>
-
-                  {/* Main Video (First Input) */}
+                  {/* Photo Link */}
                   <div className="flex flex-col gap-1.5">
-                    <label className="font-mono text-[9.5px] text-white uppercase tracking-wider block">
-                      MAIN VIDEO PATH // 기본 동영상 주소 (필수 아님)
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="font-mono text-[9px] text-white uppercase tracking-widest block font-bold">
+                        PHOTO LINK (대표 사진 링크 - .jpg, .png, .webp 등 URL) *
+                      </label>
+                      <span className="text-[8px] text-accent font-bold">ImgBB, Postimages 등의 직접 링크 권장</span>
+                    </div>
                     <input
                       type="url"
-                      placeholder="예시: https://www.youtube.com/watch?v=dQw4w9WgXcQ 또는 구글 드라이브, Dropbox 공유 링크"
+                      placeholder="예시: https://i.ibb.co/.../image.jpg (필수)"
+                      value={coverImage}
+                      onChange={(e) => setCoverImage(e.target.value)}
+                      className="w-full bg-dark-bg border border-dark-border py-1.5 px-3 rounded-xs text-xs text-white focus:border-accent/50 focus:outline-none"
+                      id="form-cover-image-input"
+                      required
+                    />
+                  </div>
+
+                  {/* Video Link */}
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="font-mono text-[9px] text-white uppercase tracking-widest block font-bold">
+                        VIDEO LINK (동영상 링크 - 유튜브, 비메오, 드라이브 등 URL)
+                      </label>
+                      <span className="text-[8px] text-dark-muted font-bold">선택사항</span>
+                    </div>
+                    <input
+                      type="url"
+                      placeholder="예시: https://www.youtube.com/watch?v=... 또는 구글 드라이브, Dropbox 공유 링크"
                       value={videoUrl}
                       onChange={(e) => setVideoUrl(e.target.value)}
-                      className="w-full bg-dark-bg border border-dark-border py-2 px-3 rounded-xs text-xs text-white placeholder-dark-muted focus:border-accent/50 focus:outline-none"
+                      className="w-full bg-dark-bg border border-dark-border py-1.5 px-3 rounded-xs text-xs text-white placeholder-dark-muted focus:border-accent/50 focus:outline-none"
                       id="form-video-url-input-main"
                     />
                   </div>
-
-                  {/* Additional Videos List */}
-                  {videoUrls.map((url, idx) => (
-                    <div key={idx} className="flex flex-col gap-1.5 p-3 border border-dark-border/40 bg-dark-bg/10 rounded-xs relative">
-                      <div className="flex items-center justify-between">
-                        <label className="font-mono text-[9.5px] text-white/80 uppercase tracking-wider">
-                          ADDITIONAL VIDEO #{idx + 1} // 추가 동영상 링크 {idx + 1}
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const updated = [...videoUrls];
-                            updated.splice(idx, 1);
-                            setVideoUrls(updated);
-                          }}
-                          className="text-dark-muted hover:text-red-400 transition-colors cursor-pointer"
-                          title="삭제"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                      <input
-                        type="url"
-                        placeholder="예시: https://youtu.be/... 또는 Dropbox, 구글 드라이브 링크"
-                        value={url}
-                        onChange={(e) => {
-                          const updated = [...videoUrls];
-                          updated[idx] = e.target.value;
-                          setVideoUrls(updated);
-                        }}
-                        className="w-full bg-dark-bg border border-dark-border/60 py-1.5 px-3 rounded-xs text-xs text-white placeholder-dark-muted focus:border-accent/50 focus:outline-none"
-                      />
-                    </div>
-                  ))}
-
-                  <p className="font-sans text-[10.5px] text-dark-muted leading-relaxed">
-                    ※ 전시할 동영상(유튜브, 비메오, 구글 드라이브, Dropbox)의 <strong>일반 웹 주소를 그대로 복사하여 입력</strong>해 주세요. 뷰어에 <strong>동영상 플레이어들이 순서대로 자동 생성</strong>됩니다.
-                  </p>
-                </div>
-
-                {/* Advanced URL Fields (collapsible/secondary so they can still manually feed fallback URLs or presets) */}
-                <div className="border border-dark-border/40 p-4 rounded-sm bg-dark-bg/25">
-                  <details className="group">
-                    <summary className="font-mono text-[9px] text-dark-muted uppercase tracking-widest cursor-pointer select-none list-none flex items-center justify-between outline-none">
-                      <span>[ ADVANCED: MANUAL MEDIATOR URLS // 직접 수동 입력 및 복사 설정 ]</span>
-                      <span className="text-accent group-open:rotate-180 transition-transform">▼</span>
-                    </summary>
-                    
-                    <div className="mt-4 flex flex-col gap-4">
-                      {/* Cover Image URL */}
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="font-mono text-[9px] text-dark-muted uppercase tracking-widest block">
-                            REPRESENT IMAGE URL (대표 이미지 주소)
-                          </label>
-                          <span className="text-[8px] text-accent font-bold">임시 이미지 퀵 로드 지원</span>
-                        </div>
-                        <input
-                          type="url"
-                          placeholder="https://images.unsplash.com/photo-..."
-                          value={coverImage}
-                          onChange={(e) => setCoverImage(e.target.value)}
-                          className="w-full bg-dark-bg border border-dark-border py-1.5 px-3 rounded-xs text-[10px] text-white focus:border-accent/50 focus:outline-none"
-                          id="form-cover-image-input"
-                        />
-                        
-                        {/* Quick Preset Selector */}
-                        <div className="mt-2 p-2 bg-dark-bg border border-dark-border rounded-xs">
-                          <span className="font-mono text-[7px] text-dark-muted uppercase tracking-wider block mb-1">
-                            고화질 시네마틱 프리셋 주소 퀵 로드
-                          </span>
-                          <div className="flex flex-wrap gap-1">
-                            {presets.map((preset, idx) => (
-                              <button
-                                key={idx}
-                                type="button"
-                                onClick={() => handleApplyPresetImage(preset.url)}
-                                className="px-1.5 py-0.5 text-[8px] font-outfit text-white hover:text-accent bg-dark-card border border-dark-border hover:border-accent/40 rounded-sm cursor-pointer transition-colors"
-                                id={`preset-img-btn-${idx}`}
-                              >
-                                {preset.name}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Additional URLs */}
-                      <div>
-                        <label className="font-mono text-[9px] text-dark-muted uppercase tracking-widest block mb-1">
-                          ADDITIONAL GALLERY IMAGES (추가 이미지 주소 - 쉼표 구분)
-                        </label>
-                        <textarea
-                          rows={2}
-                          placeholder="수동으로 추가하고 싶은 원격 이미지 URL 입력"
-                          value={additionalImagesRaw}
-                          onChange={(e) => setAdditionalImagesRaw(e.target.value)}
-                          className="w-full bg-dark-bg border border-dark-border py-1.5 px-3 rounded-xs text-[10px] text-white placeholder-dark-muted focus:border-accent/50 focus:outline-none"
-                          id="form-additional-images-textarea"
-                        />
-                      </div>
-                    </div>
-                  </details>
                 </div>
 
                 {/* Actions group */}
