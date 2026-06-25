@@ -1,14 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Global safety catch-all
     match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // Projects Collection: Publicly readable and writable to support robust cross-device synchronization and preview updates
-    match /projects/{projectId} {
       allow read, write: if true;
     }
   }
