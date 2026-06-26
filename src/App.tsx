@@ -22,7 +22,8 @@ import {
   seedProjectsToFirestore,
   seedProjectsToFirestoreWithProgress,
   saveProjectToFirestore,
-  deleteProjectFromFirestore
+  deleteProjectFromFirestore,
+  getSeededStatusFromFirestore
 } from './utils/firebase';
 
 async function getLocalProjects(): Promise<Project[]> {
@@ -61,8 +62,12 @@ export default function App() {
   const [isStaticMode, setIsStaticModeState] = useState(() => {
     try {
       const saved = localStorage.getItem('orange_archive_v2_static_mode');
-      // Default to false to enable real-time Cloud Database Syncing by default for instant publishing
-      return saved === null ? false : saved === 'true';
+      // Force default to false (Cloud database sync) to align preview, Netlify and mobile views instantly
+      // If they previously had static mode enabled, we clear it to force-synchronize them
+      if (saved === 'true') {
+        localStorage.removeItem('orange_archive_v2_static_mode');
+      }
+      return false;
     } catch {
       return false;
     }
@@ -255,18 +260,15 @@ export default function App() {
         // 2. Fetch from cloud (Firestore) as the primary source
         console.log('Fetching projects from Firestore cloud...');
         let cloudProjects = await loadProjectsFromFirestore();
+        const hasBeenSeeded = await getSeededStatusFromFirestore();
         
-        if (cloudProjects && cloudProjects.length > 0) {
+        if (cloudProjects && (cloudProjects.length > 0 || hasBeenSeeded)) {
           cloudProjects = cloudProjects.filter(p => !isForbidden(p));
           console.log(`Successfully loaded ${cloudProjects.length} projects from cloud.`);
           
-          // Merge local and cloud projects. If there's an ID collision, prefer the cloud version,
-          // but preserve any unique local projects that might not be synced yet.
-          const projectMap = new Map<string, Project>();
-          localProjectsList.forEach(p => projectMap.set(p.id, p));
-          cloudProjects.forEach(p => projectMap.set(p.id, p)); // Cloud overrides local
-          
-          finalProjects = Array.from(projectMap.values());
+          // Instead of merging local cache (which causes zombie deleted data to resurrect),
+          // we use the Cloud as the absolute primary source of truth!
+          finalProjects = cloudProjects;
           
           // Update local caches to keep them in perfect sync
           try {
@@ -274,20 +276,24 @@ export default function App() {
             await BulletproofDB.saveAll(finalProjects);
           } catch (_) {}
         } else {
-          // Cloud is empty, use local projects or fallback to initialProjects
+          // Cloud has never been seeded or fetch returned empty and not seeded
+          // Use local projects or fallback to initialProjects
           if (localProjectsList.length > 0) {
-            console.log(`Cloud was empty. Loaded ${localProjectsList.length} projects from local storage.`);
+            console.log(`Cloud was empty & never seeded. Loading ${localProjectsList.length} local projects and seeding to Firestore.`);
             finalProjects = localProjectsList;
           } else {
             console.log('Both local and cloud stores empty. Loading initialProjects baseline.');
             finalProjects = initialProjects.filter(p => !isForbidden(p));
-            if (finalProjects.length > 0) {
-              try {
-                localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(finalProjects));
-                await BulletproofDB.saveAll(finalProjects);
-              } catch (_) {}
-            }
           }
+
+          // Save and seed to Cloud to keep them completely synchronized!
+          try {
+            localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(finalProjects));
+            await BulletproofDB.saveAll(finalProjects);
+            if (finalProjects.length > 0) {
+              await seedProjectsToFirestore(finalProjects);
+            }
+          } catch (_) {}
         }
 
         setProjects(finalProjects);

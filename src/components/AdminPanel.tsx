@@ -406,8 +406,8 @@ export const services: ServiceDetail[] = ${jsonServices};
           let width = img.width;
           let height = img.height;
           
-          // Limit image dimensions to safe boundaries (max 600 border to fit Firestore size limitations perfectly)
-          const MAX_RESOL = 600;
+          // Limit image dimensions to safe boundaries (max 500 border to fit Firestore size limitations perfectly)
+          const MAX_RESOL = 500;
           if (width > MAX_RESOL || height > MAX_RESOL) {
             if (width > height) {
               height = Math.round((height * MAX_RESOL) / width);
@@ -426,8 +426,8 @@ export const services: ServiceDetail[] = ${jsonServices};
             ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, 0, 0, width, height);
             
-            // Compress into highly-optimized web-scaled JPEG (0.40 quality keeps Firestore records stable below 1MB)
-            const compressedUrl = canvas.toDataURL('image/jpeg', 0.40);
+            // Compress into highly-optimized web-scaled JPEG (0.30 quality keeps Firestore records stable below 1MB)
+            const compressedUrl = canvas.toDataURL('image/jpeg', 0.30);
             const newFile = {
               id: 'file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
               url: compressedUrl,
