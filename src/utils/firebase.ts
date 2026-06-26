@@ -75,7 +75,8 @@ export async function compressBase64IfNeeded(
     return base64Str;
   }
   // If the base64 string is already reasonably small, bypass compression to save processing time
-  if (base64Str.length < 15000) {
+  // 60000 characters is around ~45KB, which is completely safe for Firestore documents
+  if (base64Str.length < 60000) {
     return base64Str;
   }
 
