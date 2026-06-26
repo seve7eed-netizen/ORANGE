@@ -312,6 +312,25 @@ export default function App() {
     } catch (e) {
       console.warn('LocalStorage limit saturated, saved securely in persistent IndexedDB:', e);
     }
+
+    // 3. Auto-save directly to the project's static source file in the local workspace filesystem
+    try {
+      fetch('/api/save-static-projects', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ projects: updated })
+      })
+      .then((res) => {
+        if (res.ok) {
+          console.log('Successfully wrote projects directly to src/initialProjects.ts code file.');
+        }
+      })
+      .catch((_) => {
+        // Safe to ignore in pure static build hosting (e.g. Netlify/GitHub Pages) where the backend route doesn't exist.
+      });
+    } catch (_) {}
   };
 
   const handleAddProject = async (p: Project) => {
