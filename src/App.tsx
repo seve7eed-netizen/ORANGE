@@ -61,10 +61,10 @@ export default function App() {
   const [isStaticMode, setIsStaticModeState] = useState(() => {
     try {
       const saved = localStorage.getItem('orange_archive_v2_static_mode');
-      // Default to true as the user requested converting to static website
-      return saved === null ? true : saved === 'true';
+      // Default to false to enable real-time Cloud Database Syncing by default for instant publishing
+      return saved === null ? false : saved === 'true';
     } catch {
-      return true;
+      return false;
     }
   });
 
@@ -274,13 +274,19 @@ export default function App() {
             await BulletproofDB.saveAll(finalProjects);
           } catch (_) {}
         } else {
-          // Cloud is empty, use local projects or fallback to empty defaults
+          // Cloud is empty, use local projects or fallback to initialProjects
           if (localProjectsList.length > 0) {
             console.log(`Cloud was empty. Loaded ${localProjectsList.length} projects from local storage.`);
             finalProjects = localProjectsList;
           } else {
-            console.log('Both local and cloud stores empty. Starting with empty archive.');
-            finalProjects = [];
+            console.log('Both local and cloud stores empty. Loading initialProjects baseline.');
+            finalProjects = initialProjects.filter(p => !isForbidden(p));
+            if (finalProjects.length > 0) {
+              try {
+                localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(finalProjects));
+                await BulletproofDB.saveAll(finalProjects);
+              } catch (_) {}
+            }
           }
         }
 
