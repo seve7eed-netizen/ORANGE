@@ -1,9 +1,15 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Project, CategoryFilter } from '../types';
 import { Lock, Unlock, Plus, Trash2, Edit2, Download, Upload, RotateCcw, AlertTriangle, FileText, Check, ArrowRight, Image as ImageIcon, Film, Video, Star, Save, Database } from 'lucide-react';
 import { BulletproofDB } from '../utils/db';
-import { compressBase64IfNeeded } from '../utils/firebase';
+import { 
+  compressBase64IfNeeded,
+  saveImgbbImageToFirestore,
+  loadImgbbImagesFromFirestore,
+  deleteImgbbImageFromFirestore,
+  ImgbbImage
+} from '../utils/firebase';
 import { isDevelopmentWorkspace } from '../utils/isDev';
 
 interface AdminPanelProps {
@@ -65,22 +71,26 @@ export default function AdminPanel({
   const [videoUrls, setVideoUrls] = useState<string[]>([]);
   const [featured, setFeatured] = useState(false);
 
-  // Direct File Upload & Representative selection states
-  const [uploadedFiles, setUploadedFiles] = useState<{ id: string; url: string; name: string; type: 'image' | 'video' }[]>([]);
-  const [representativeId, setRepresentativeId] = useState<string | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-
-  // Raw JSON Backup state
-  const [jsonBackupText, setJsonBackupText] = useState('');
-  const [backupSuccessMsg, setBackupSuccessMsg] = useState('');
-  const backupFileInputRef = useRef<HTMLInputElement | null>(null);
-
   // Custom states for iFrame-safe non-blocking feedback & inline confirmation
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isHardSaving, setIsHardSaving] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+
+  const [imgbbApiKey, setImgbbApiKey] = useState<string>(() => {
+    try {
+      return localStorage.getItem('orange_archive_imgbb_key') || ((import.meta as any).env?.VITE_IMGBB_API_KEY as string) || '';
+    } catch (_) {
+      return '';
+    }
+  });
+  const [isUploadingToImgBB, setIsUploadingToImgBB] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+
+  const [isImgbbLibraryOpen, setIsImgbbLibraryOpen] = useState(false);
+  const [imgbbLibraryImages, setImgbbLibraryImages] = useState<ImgbbImage[]>([]);
+  const [isLoadingLibrary, setIsLoadingLibrary] = useState(false);
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ text, type });
@@ -247,18 +257,7 @@ export const services: ServiceDetail[] = ${jsonServices};
 
   const handleApplyPresetImage = (url: string) => {
     setCoverImage(url);
-    
-    // Also push to uploadedFiles for consistency
-    const id = 'preset_' + Date.now();
-    setUploadedFiles(prev => {
-      const filtered = prev.filter(f => !f.id.startsWith('preset_'));
-      const nextFiles = [
-        ...filtered,
-        { id, url, name: '프리셋 이미지', type: 'image' }
-      ];
-      setRepresentativeId(id);
-      return nextFiles;
-    });
+    showToast('프리셋 대표 이미지가 적용되었습니다.', 'success');
   };
 
   const startEdit = (p: Project) => {
@@ -277,47 +276,6 @@ export const services: ServiceDetail[] = ${jsonServices};
     const otherVideos = p.videoUrls ? p.videoUrls.filter(v => v !== p.videoUrl) : [];
     setVideoUrls(otherVideos);
     setFeatured(p.featured || false);
-
-    // Initialize list with project resources
-    const list: { id: string; url: string; name: string; type: 'image' | 'video' }[] = [];
-    let repId: string | null = null;
-
-    if (p.coverImage) {
-      const cid = 'cover_' + Date.now();
-      list.push({
-        id: cid,
-        url: p.coverImage,
-        name: '대표 이미지 (Main Cover)',
-        type: 'image'
-      });
-      repId = cid;
-    }
-
-    if (p.additionalImages && p.additionalImages.length > 0) {
-      p.additionalImages.forEach((img, idx) => {
-        list.push({
-          id: 'add_' + idx + '_' + Date.now(),
-          url: img,
-          name: `추가 이미지 #${idx + 1}`,
-          type: 'image'
-        });
-      });
-    }
-
-    const vUrls = p.videoUrls || (p.videoUrl ? [p.videoUrl] : []);
-    vUrls.forEach((vUrl, idx) => {
-      if (vUrl) {
-        list.push({
-          id: `video_${idx}_${Date.now()}`,
-          url: vUrl,
-          name: vUrls.length > 1 ? `프로젝트 비디오 #${idx + 1}` : '프로젝트 비디오 (Embedded/Uploaded)',
-          type: 'video'
-        });
-      }
-    });
-
-    setUploadedFiles(list);
-    setRepresentativeId(repId);
   };
 
   const clearForm = () => {
@@ -334,216 +292,243 @@ export const services: ServiceDetail[] = ${jsonServices};
     setVideoUrl('');
     setVideoUrls([]);
     setFeatured(false);
-    setUploadedFiles([]);
-    setRepresentativeId(null);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-    processFiles(files);
-  };
+  const compressFileToDataUrl = (fileObj: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const objectUrl = URL.createObjectURL(fileObj);
+      const img = new Image();
 
-  const processFiles = async (files: FileList) => {
-    for (const file of Array.from(files)) {
-      const isVideo = file.type.startsWith('video/');
-      const isHEIC = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif';
-
-      let fileToRead: File = file;
-
-      // 1. HEIC converting filter using dynamic heic2any
-      if (isHEIC) {
-        showToast(`HEIC 포멧을 감지하여 고대비 표준 JPEG로 변환하는 중입니다...`, 'info');
-        try {
-          const heic2any = (await import('heic2any')).default;
-          const converted = await heic2any({
-            blob: file,
-            toType: 'image/jpeg',
-            quality: 0.85
-          });
-          const convertedBlob = Array.isArray(converted) ? converted[0] : converted;
-          fileToRead = new File([convertedBlob], file.name.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg'), {
-            type: 'image/jpeg'
-          });
-          showToast(`"${file.name}" 이미지가 크로스 브라우저 호환 JPEG로 복원 변환되었습니다!`, 'success');
-        } catch (err) {
-          console.error('HEIC conversion failed:', err);
-          showToast('HEIC 이미지 변환 과정에서 규격 해석 오류가 발생하여 원동력 백업 모드로 로드합니다.', 'info');
-        }
-      }
-
-      // Show toast if uploading a large file > 5MB
-      if (fileToRead.size > 5 * 1024 * 1024) {
-        showToast(`대용량 미디어 파일 처리 중 (${(fileToRead.size / (1024 * 1024)).toFixed(1)}MB). 고화질 압축 및 브라우저 성능 최적화가 가동됩니다.`, 'info');
-      }
-
-      if (isVideo) {
-        // For video files, we read them with FileReader as DataURL to persist in IndexedDB
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const resultUrl = event.target?.result as string;
-          const newFile = {
-            id: 'file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-            url: resultUrl,
-            name: fileToRead.name,
-            type: 'video' as 'image' | 'video'
-          };
-          setUploadedFiles((prev) => [...prev, newFile]);
-          setVideoUrl(resultUrl);
-          showToast('동영상 파일이 첨부되었습니다.', 'success');
-        };
-        reader.onerror = () => {
-          showToast('동영상 파일 읽기 작업이 중단되었습니다.', 'error');
-        };
-        reader.readAsDataURL(fileToRead);
-      } else {
-        // Memory-safe Image loading using temporary Object URL (avoids string overhead before resize)
-        const objectUrl = URL.createObjectURL(fileToRead);
-        const img = new Image();
-
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          
-          // Limit image dimensions to safe boundaries (max 400 border to fit Firestore size limitations perfectly)
-          const MAX_RESOL = 400;
-          if (width > MAX_RESOL || height > MAX_RESOL) {
-            if (width > height) {
-              height = Math.round((height * MAX_RESOL) / width);
-              width = MAX_RESOL;
-            } else {
-              width = Math.round((width * MAX_RESOL) / height);
-              height = MAX_RESOL;
-            }
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            // Compress into highly-optimized web-scaled JPEG (0.20 quality keeps Firestore records stable below 1MB)
-            const compressedUrl = canvas.toDataURL('image/jpeg', 0.20);
-            const newFile = {
-              id: 'file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-              url: compressedUrl,
-              name: fileToRead.name,
-              type: 'image' as 'image' | 'video'
-            };
-
-            setUploadedFiles((prev) => {
-              const updated = [...prev, newFile];
-              if (!representativeId) {
-                setRepresentativeId(newFile.id);
-                setCoverImage(compressedUrl);
-              }
-              return updated;
-            });
-            showToast(`"${fileToRead.name}" 이미지의 고화질 웹 최적화 압축(400px)이 완료되었습니다.`, 'success');
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        
+        const MAX_RESOL = 400;
+        if (width > MAX_RESOL || height > MAX_RESOL) {
+          if (width > height) {
+            height = Math.round((height * MAX_RESOL) / width);
+            width = MAX_RESOL;
           } else {
-            // Context acquisition failed fallback - use FileReader
-            readAsDataUrlFallback(fileToRead);
+            width = Math.round((width * MAX_RESOL) / height);
+            height = MAX_RESOL;
           }
-          URL.revokeObjectURL(objectUrl);
-        };
-
-        img.onerror = () => {
-          // Object URL failed, try FileReader as backup
-          readAsDataUrlFallback(fileToRead);
-          URL.revokeObjectURL(objectUrl);
-        };
-
-        img.src = objectUrl;
-      }
-    }
-  };
-
-  // Fallback to ReadAsDataURL for safety
-  const readAsDataUrlFallback = (fileObj: File) => {
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      let resultUrl = event.target?.result as string;
-      if (resultUrl && resultUrl.startsWith('data:image/')) {
-        showToast(`"${fileObj.name}" 이미지의 예비 최적화 압축을 진행 중입니다...`, 'info');
-        resultUrl = await compressBase64IfNeeded(resultUrl, 600, 0.4);
-      }
-      const newFile = {
-        id: 'file_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-        url: resultUrl,
-        name: fileObj.name,
-        type: 'image' as 'image' | 'video'
-      };
-      setUploadedFiles((prev) => {
-        const updated = [...prev, newFile];
-        if (!representativeId) {
-          setRepresentativeId(newFile.id);
-          setCoverImage(resultUrl);
         }
-        return updated;
-      });
-      showToast(`"${fileObj.name}" 이미지 복구 형식을 통해 최적화 완료 및 업로드되었습니다.`, 'success');
-    };
-    reader.readAsDataURL(fileObj);
-  };
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      processFiles(files);
-    }
-  };
-
-  const handleRemoveUploadedFile = (id: string) => {
-    setUploadedFiles((prev) => {
-      const filtered = prev.filter((f) => f.id !== id);
-      
-      // If removed item was representative, pick next available image
-      if (id === representativeId) {
-        const nextImg = filtered.find((f) => f.type === 'image');
-        if (nextImg) {
-          setRepresentativeId(nextImg.id);
-          setCoverImage(nextImg.url);
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          const compressedUrl = canvas.toDataURL('image/jpeg', 0.20);
+          resolve(compressedUrl);
         } else {
-          setRepresentativeId(null);
-          setCoverImage('');
+          resolve(objectUrl);
         }
-      }
+        URL.revokeObjectURL(objectUrl);
+      };
 
-      // If removed item is video, clear videoUrl
-      const wasVideo = prev.find((f) => f.id === id)?.type === 'video';
-      if (wasVideo) {
-        setVideoUrl('');
-      }
+      img.onerror = () => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          resolve(e.target?.result as string || '');
+        };
+        reader.readAsDataURL(fileObj);
+        URL.revokeObjectURL(objectUrl);
+      };
 
-      return filtered;
+      img.src = objectUrl;
     });
   };
 
-  const handleSetRepresentative = (id: string) => {
-    const file = uploadedFiles.find((f) => f.id === id);
-    if (file) {
-      if (file.type === 'video') {
-        showToast('영상 파일은 대표 이미지로 지정할 수 없습니다. 이미지 파일을 지정해 주세요.', 'error');
-        return;
+  const uploadAndGetUrl = async (file: File, skipStateControl = false): Promise<string> => {
+    const isHEIC = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif';
+
+    let fileToRead: File = file;
+
+    // HEIC conversion
+    if (isHEIC) {
+      if (!skipStateControl) showToast(`HEIC 포멧을 JPEG로 표준 변환 중입니다...`, 'info');
+      try {
+        const heic2any = (await import('heic2any')).default;
+        const converted = await heic2any({
+          blob: file,
+          toType: 'image/jpeg',
+          quality: 0.85
+        });
+        const convertedBlob = Array.isArray(converted) ? converted[0] : converted;
+        fileToRead = new File([convertedBlob], file.name.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg'), {
+          type: 'image/jpeg'
+        });
+      } catch (err) {
+        console.error('HEIC conversion failed:', err);
       }
-      setRepresentativeId(id);
-      setCoverImage(file.url);
     }
+
+    if (imgbbApiKey) {
+      if (!skipStateControl) setIsUploadingToImgBB(true);
+      try {
+        if (!skipStateControl) showToast(`"${fileToRead.name}" 이미지를 ImgBB 클라우드에 업로드 중입니다...`, 'info');
+        const formData = new FormData();
+        formData.append('image', fileToRead);
+        
+        const response = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbApiKey}`, {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP Error ${response.status}`);
+        }
+        
+        const resData = await response.json();
+        if (resData && resData.success && resData.data && resData.data.url) {
+          const uploadedUrl = resData.data.url;
+          
+          try {
+            await saveImgbbImageToFirestore(uploadedUrl, fileToRead.name, title || '미분류');
+          } catch (fsErr) {
+            console.warn('Failed to register ImgBB image in Firestore library:', fsErr);
+          }
+          
+          if (!skipStateControl) showToast(`"${fileToRead.name}" 이미지가 ImgBB 클라우드에 업로드되었습니다!`, 'success');
+          return uploadedUrl;
+        } else {
+          throw new Error(resData?.error?.message || '알 수 없는 API 에러');
+        }
+      } catch (error: any) {
+        console.error('ImgBB Upload Failed:', error);
+        if (!skipStateControl) {
+          showToast(`ImgBB 업로드에 실패했습니다. 로컬 압축본으로 대체합니다.`, 'error');
+        }
+        return await compressFileToDataUrl(fileToRead);
+      } finally {
+        if (!skipStateControl) setIsUploadingToImgBB(false);
+      }
+    } else {
+      if (!skipStateControl) showToast(`ImgBB API Key가 등록되지 않아 로컬 압축을 진행합니다. API Key 등록 시 원본 고화질로 보관됩니다.`, 'info');
+      return await compressFileToDataUrl(fileToRead);
+    }
+  };
+
+  const loadLibraryData = async (silent = true) => {
+    setIsLoadingLibrary(true);
+    try {
+      const fetched = await loadImgbbImagesFromFirestore();
+      
+      const scannedImages: ImgbbImage[] = [];
+      const seenUrls = new Set<string>();
+      
+      fetched.forEach(img => {
+        if (img.url) seenUrls.add(img.url);
+      });
+
+      if (Array.isArray(projects)) {
+        projects.forEach((p) => {
+          const pTitle = p.title || '등록된 프로젝트';
+          
+          if (p.coverImage && (p.coverImage.includes('ibb.co') || p.coverImage.includes('imgbb') || (p.coverImage.startsWith('http') && !p.coverImage.startsWith('data:')))) {
+            if (!seenUrls.has(p.coverImage)) {
+              seenUrls.add(p.coverImage);
+              scannedImages.push({
+                id: 'scanned_cover_' + p.id,
+                url: p.coverImage,
+                name: `${pTitle} - 대표 사진`,
+                projectTitle: pTitle,
+                uploadedAt: Date.now() - 3600000
+              });
+            }
+          }
+          
+          if (p.additionalImages && p.additionalImages.length > 0) {
+            p.additionalImages.forEach((imgUrl, idx) => {
+              if (imgUrl && (imgUrl.includes('ibb.co') || imgUrl.includes('imgbb') || (imgUrl.startsWith('http') && !imgUrl.startsWith('data:')))) {
+                if (!seenUrls.has(imgUrl)) {
+                  seenUrls.add(imgUrl);
+                  scannedImages.push({
+                    id: `scanned_add_${idx}_${p.id}`,
+                    url: imgUrl,
+                    name: `${pTitle} - 추가 사진 #${idx + 1}`,
+                    projectTitle: pTitle,
+                    uploadedAt: Date.now() - 3600000 - (idx * 60000)
+                  });
+                }
+              }
+            });
+          }
+        });
+      }
+      
+      const combined = [...fetched, ...scannedImages];
+      setImgbbLibraryImages(combined);
+      
+      if (!silent && combined.length > 0) {
+        showToast(`총 ${combined.length}개의 클라우드 이미지를 성공적으로 연동 및 스캔했습니다!`, 'success');
+      }
+    } catch (err) {
+      console.error('Failed to load ImgBB library:', err);
+      if (!silent) {
+        showToast('ImgBB 라이브러리를 가져오지 못했습니다.', 'error');
+      }
+    } finally {
+      setIsLoadingLibrary(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAdminLoggedIn) {
+      loadLibraryData(true);
+    }
+  }, [isAdminLoggedIn, projects]);
+
+  const handleOpenImgbbLibrary = async () => {
+    setIsImgbbLibraryOpen(true);
+    await loadLibraryData(false);
+  };
+
+  const handleDeleteLibraryImage = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirm('이 이미지를 불러오기 라이브러리 목록에서 삭제하시겠습니까?\n(실제 ImgBB의 이미지는 삭제되지 않고, 이 리스트 항목만 지워집니다.)')) {
+      try {
+        await deleteImgbbImageFromFirestore(id);
+        setImgbbLibraryImages(prev => prev.filter(img => img.id !== id));
+        showToast('라이브러리 목록에서 삭제되었습니다.', 'success');
+      } catch (err) {
+        showToast('삭제에 실패했습니다.', 'error');
+      }
+    }
+  };
+
+  const handleSelectLibraryImage = (img: ImgbbImage) => {
+    if (!coverImage) {
+      setCoverImage(img.url);
+      showToast('대표 사진으로 이미지 링크가 자동 설정되었습니다!', 'success');
+    } else {
+      setAdditionalImages(prev => [...prev, img.url]);
+      showToast('추가 사진 목록에 이미지 링크가 삽입되었습니다!', 'success');
+    }
+    setIsImgbbLibraryOpen(false);
+  };
+
+  const handleSetAsCover = (index: number) => {
+    const targetUrl = additionalImages[index];
+    if (!targetUrl) return;
+
+    const currentCover = coverImage.trim();
+    setCoverImage(targetUrl);
+
+    const newAdditionals = [...additionalImages];
+    if (currentCover) {
+      newAdditionals[index] = currentCover;
+      showToast('대표 사진이 지정되었습니다. 기존 대표 사진은 추가 사진 목록(# ' + (index + 1) + ')으로 보존됩니다.', 'success');
+    } else {
+      newAdditionals.splice(index, 1);
+      showToast('대표 사진이 지정되었습니다.', 'success');
+    }
+    setAdditionalImages(newAdditionals);
   };
 
   const handleSaveProject = (e: React.FormEvent) => {
@@ -551,18 +536,6 @@ export const services: ServiceDetail[] = ${jsonServices};
 
     let finalCoverImage = coverImage.trim();
     let finalVideoUrl = videoUrl.trim();
-
-    // Check if there is a representative file in uploadedFiles
-    const repFile = uploadedFiles.find(f => f.id === representativeId && f.type === 'image');
-    if (repFile) {
-      finalCoverImage = repFile.url;
-    } else {
-      // If representativeId doesn't point to a file, but there are uploaded images, pick the first one
-      const uploadedImagesOnly = uploadedFiles.filter(f => f.type === 'image');
-      if (uploadedImagesOnly.length > 0 && !finalCoverImage) {
-        finalCoverImage = uploadedImagesOnly[0].url;
-      }
-    }
 
     if (!title || !client || !finalCoverImage) {
       showToast('프로젝트명, 클라이언트명, 대표 사진은 필수 항목입니다. 직접 파일을 업로드하거나 이미지 링크를 입력해 주세요.', 'error');
@@ -579,20 +552,11 @@ export const services: ServiceDetail[] = ${jsonServices};
       .map((t) => t.trim())
       .filter((t) => t.length > 0);
 
-    // Collect all uploaded images that are NOT the representative one
-    const uploadedAddImages = uploadedFiles
-      .filter(f => f.type === 'image' && f.id !== (repFile?.id || representativeId))
-      .map(f => f.url);
-
     const manualAddImages = additionalImages
       .map(img => img.trim())
       .filter(img => img.length > 0);
 
-    // Combine uploaded images and manual image URLs (without duplication)
-    const cleanedAdditionalImages = Array.from(new Set([
-      ...uploadedAddImages,
-      ...manualAddImages
-    ]));
+    const cleanedAdditionalImages: string[] = Array.from(new Set(manualAddImages)) as string[];
 
     const allVideoUrls = [finalVideoUrl, ...videoUrls]
       .map(v => v.trim())
@@ -634,76 +598,6 @@ export const services: ServiceDetail[] = ${jsonServices};
       .finally(() => {
         setIsSaving(false);
       });
-  };
-
-  const handleBackupExport = () => {
-    try {
-      const rawData = JSON.stringify(projects, null, 2);
-      setJsonBackupText(rawData);
-
-      // Create a Blob and trigger a browser download
-      const blob = new Blob([rawData], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `orange_archive_backup_${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      setBackupSuccessMsg('백업 JSON 파일 다운로드가 시작되었습니다. 하단 텍스트 영역에서도 백업본 확인 및 복사가 가능합니다.');
-      showToast('성공적으로 백업 파일(.json) 다운로드를 개시했습니다!', 'success');
-    } catch (err) {
-      console.error('Backup download error:', err);
-      showToast('백업 파일 생성에 실패했습니다.', 'error');
-    }
-  };
-
-  const handleBackupImport = () => {
-    if (!jsonBackupText.trim()) {
-      showToast('입력창에 복원할 JSON 데이터를 붙여넣어 주세요.', 'error');
-      return;
-    }
-    try {
-      const parsed = JSON.parse(jsonBackupText);
-      if (Array.isArray(parsed) && parsed.every(p => p && p.id && p.title)) {
-        onImportBackup(parsed);
-        setJsonBackupText('');
-        setBackupSuccessMsg('성공적으로 로컬 아카이브 데이터베이스가 갱신 및 백업으로부터 동기화되었습니다!');
-        showToast('성공적으로 로컬 아카이브 데이터베이스가 백업으로부터 동기화되었습니다!', 'success');
-      } else {
-        showToast('올바른 포트폴리오 스키마 배열 형식이 아닙니다.', 'error');
-      }
-    } catch (e) {
-      showToast('JSON 문법 오류가 발견되었습니다. 서식을 다시 확인하여 주세요.', 'error');
-    }
-  };
-
-  const handleBackupFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const text = event.target?.result as string;
-        const parsed = JSON.parse(text);
-        if (Array.isArray(parsed) && parsed.every(p => p && p.id && p.title)) {
-          onImportBackup(parsed);
-          setJsonBackupText('');
-          setBackupSuccessMsg('성공적으로 로컬 아카이브 데이터베이스가 갱신 및 백업으로부터 동기화되었습니다!');
-          showToast('성공적으로 백업 파일(.json)을 로드하여 데이터베이스를 복원했습니다!', 'success');
-        } else {
-          showToast('올바른 포트폴리오 백업 형식이 아닙니다.', 'error');
-        }
-      } catch (err) {
-        showToast('JSON 파일 파싱에 실패했습니다.', 'error');
-      }
-    };
-    reader.readAsText(file);
-    // Reset file input value so same file can be selected again
-    e.target.value = '';
   };
 
   // 1. Password Protection Gate Form
@@ -821,184 +715,6 @@ export const services: ServiceDetail[] = ${jsonServices};
             </button>
           </div>
         </div>
-
-        {/* Iframe Storage Security Alert Banner */}
-        <div className="mb-6 p-4 bg-orange-950/20 border border-accent/30 rounded-xs flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs">
-          <div className="flex gap-3 text-left">
-            <span className="text-xl leading-none">💡</span>
-            <div>
-              <p className="font-sans font-bold text-white mb-0.5">
-                [ 프리뷰(Iframe) 환경에서의 데이터 파일 업로드 주의 사항 ]
-              </p>
-              <p className="font-sans text-dark-muted leading-relaxed max-w-4xl">
-                브라우저 보안 규칙으로 인해 편집 창 우측의 <strong>임시 프리뷰(Iframe) 화면 내에서는 로컬 저장소(IndexedDB/LocalStorage) 작동이 차단되거나 세션이 유지되지 않고 삭제될 수 있습니다.</strong><br />
-                데이터가 유실되지 않는 <strong>완벽하고 안정적인 데이터 업로드를 위해서는 우측 상단의 '새 창에서 열기' 버튼 또는 실제 주소 홈페이지(Development/Shared App URL)로 직접 접속하여 관리자 패널(비밀번호 9764)을 사용</strong>해 주세요. 실제 홈페이지로 가시면 업로드한 포트폴리오 이미지가 로컬 디바이스에 완벽하고 영구적으로 보존됩니다!
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => window.open(window.location.origin, '_blank')}
-            className="shrink-0 p-2 px-3 border border-accent/40 hover:bg-accent hover:text-black text-[10px] font-mono font-bold uppercase rounded-xs text-accent transition-colors duration-300 cursor-pointer self-start md:self-center"
-          >
-            [새 창(홈페이지)에서 관리자 열기]
-          </button>
-        </div>
-
-        {/* Runtime Mode Selector (Static SPA vs Cloud Sync) */}
-        <div className="mb-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-dark-card border border-dark-border p-4 rounded-sm text-left">
-          <div className="flex-grow">
-            <span className="font-syne text-[10px] font-bold text-accent uppercase tracking-widest block">
-              [ WEBSITE RUNTIME SYSTEM // 웹사이트 구동 방식 설정 ]
-            </span>
-            <p className="text-xs font-sans text-dark-muted mt-1 leading-relaxed">
-              <strong>정적 사이트(Static SPA) 모드</strong>를 활성화하면 Firebase 데이터베이스 연동 및 접근 권한 제한 없이, 내장된 데이터 파일과 브라우저 캐시만으로 초고속 단독 정적 구동됩니다.
-            </p>
-          </div>
-          <div className="flex items-center gap-3 shrink-0 self-end md:self-center">
-            <span className="font-sans text-xs font-bold text-white select-none">
-              {isStaticMode ? '정적 단독형 웹사이트 (Static SPA)' : '클라우드 실시간 동기화'}
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setIsStaticMode(!isStaticMode);
-                showToast(
-                  !isStaticMode 
-                    ? "정적 단독형 웹사이트 모드가 활성화되었습니다. 데이터베이스 접근 에러가 발생하지 않습니다." 
-                    : "클라우드 데이터 실시간 동기화 모드로 전환되었습니다.", 
-                  "success"
-                );
-              }}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                isStaticMode ? 'bg-accent font-bold' : 'bg-dark-border'
-              }`}
-              id="admin-runtime-mode-toggle"
-              title="구동 방식 스위치"
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-black shadow ring-0 transition duration-200 ease-in-out ${
-                  isStaticMode ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-        </div>
-
-        {/* Dynamic Panel rendering based on mode */}
-        {isStaticMode ? (
-          <div className="mb-8 p-5 bg-accent/5 border border-accent/40 rounded-sm shadow-md flex flex-col xl:flex-row items-center justify-between gap-6 transition-all duration-300 hover:border-accent/60 relative overflow-hidden text-left w-full">
-            <div className="absolute top-0 left-0 w-1.5 h-full bg-accent" />
-            <div className="flex gap-4">
-              <div className="p-3 bg-accent/10 rounded-full text-accent shrink-0 self-start">
-                <Database size={20} />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <h4 className="font-syne text-sm font-bold text-white uppercase tracking-wider">
-                    정적 단독 구동 제어 센터 (Static SPA Center)
-                  </h4>
-                  <span className="flex items-center gap-1 font-mono text-[9px] text-accent bg-accent/10 px-1.5 py-0.5 rounded-full uppercase">
-                    <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-                    PURE OFFLINE STATIC ACTIVE
-                  </span>
-                </div>
-                <p className="font-sans text-xs text-dark-muted leading-relaxed max-w-3xl">
-                  현재 웹사이트는 Firebase 데이터베이스 연결을 원천 우회하고, <strong className="text-accent">100% 독립적인 오프라인/정적 모드</strong>로 작동 중입니다. 로딩 지연이 전혀 없고 권한 에러 걱정이 없습니다.
-                  <br />
-                  수정 사항을 배포 사이트(Netlify 등)에 영구 반영하시려면, 아래 버튼을 눌러 소스코드를 복사한 뒤 에디터의 <code className="text-white bg-dark-bg/80 px-1 py-0.5 rounded font-mono text-[11px]">src/initialProjects.ts</code> 파일의 내용 전체에 그대로 덮어씌워 배포(빌드)하시면 됩니다!
-                </p>
-              </div>
-            </div>
-            
-            <div className="shrink-0 w-full xl:w-auto">
-              <button
-                type="button"
-                onClick={handleCopyStaticCode}
-                className="w-full xl:w-auto shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 bg-accent text-black hover:bg-accent/80 hover:shadow-accent/20 active:scale-[0.98] cursor-pointer"
-              >
-                <Save size={13} />
-                <span>{copiedCode ? '복사 완료! ✔' : 'initialProjects.ts 소스 복사 ↗'}</span>
-              </button>
-            </div>
-          </div>
-        ) : (
-          /* Highly prominent Cloud Preview Synchronization Dashboard Panel */
-          onForceSyncToCloud && (
-            <div className="mb-8 p-5 bg-emerald-950/15 border border-emerald-500/40 rounded-sm shadow-md flex flex-col xl:flex-row items-center justify-between gap-6 transition-all duration-300 hover:border-emerald-500/60 relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500" />
-              <div className="flex gap-4 text-left">
-                <div className="p-3 bg-emerald-500/10 rounded-full text-emerald-400 shrink-0 self-start">
-                  <Database size={20} className={isSyncingCloud || isPullingCloud ? 'animate-bounce' : ''} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <h4 className="font-syne text-sm font-bold text-emerald-400 uppercase tracking-wider">
-                      클라우드 데이터 동기화 제어 센터 (Cloud Sync Center)
-                    </h4>
-                    <span className="flex items-center gap-1 font-mono text-[9px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full uppercase">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      ONLINE SYNC ACTIVE
-                    </span>
-                  </div>
-                  <p className="font-sans text-xs text-dark-muted leading-relaxed max-w-3xl">
-                    구글 AI 스튜디오 프리뷰 환경과 배포된 Netlify 웹사이트 간에 포트폴리오 데이터를 완벽하게 실시간 동기화할 수 있습니다.
-                    <br />
-                    • <strong className="text-emerald-400">클라우드 데이터 저장 ↗</strong>: 현재 화면의 포트폴리오/사진촬영 데이터를 클라우드 데이터베이스에 영구 저장하여 Netlify 등 다른 기기에서 가져갈 수 있게 합니다.
-                    <br />
-                    • <strong className="text-emerald-400">클라우드 데이터 가져오기 ↙</strong>: 클라우드에 보관된 최신 포트폴리오 데이터를 현재 브라우저로 가져와 화면에 즉시 적용합니다. (실행 전 자동으로 로컬 백업이 생성됩니다)
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto shrink-0">
-                <button
-                  type="button"
-                  onClick={handleManualForceSync}
-                  disabled={isSyncingCloud || isPullingCloud}
-                  className={`shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 shadow-lg ${
-                    isSyncingCloud
-                      ? 'bg-dark-card border border-dark-border text-dark-muted animate-pulse cursor-not-allowed shadow-none'
-                      : 'bg-emerald-500 text-black hover:bg-emerald-400 hover:shadow-emerald-500/20 active:scale-[0.98] cursor-pointer'
-                  }`}
-                  id="admin-main-cloud-sync-btn"
-                >
-                  <Database size={13} className={isSyncingCloud ? 'animate-spin' : ''} />
-                  <span>{isSyncingCloud ? '동기화 전송 중...' : '클라우드 데이터 저장 ↗'}</span>
-                </button>
-
-                {onPullFromCloud && (
-                  <button
-                    type="button"
-                    onClick={handleManualPull}
-                    disabled={isSyncingCloud || isPullingCloud}
-                    className={`shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 border shadow-lg ${
-                      isPullingCloud
-                        ? 'bg-dark-card border border-dark-border text-dark-muted animate-pulse cursor-not-allowed shadow-none'
-                        : 'border-emerald-500/50 bg-transparent text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-400 active:scale-[0.98] cursor-pointer'
-                    }`}
-                    id="admin-main-cloud-pull-btn"
-                  >
-                    <Download size={13} className={isPullingCloud ? 'animate-spin' : ''} />
-                    <span>{isPullingCloud ? '데이터 로드 중...' : '클라우드 데이터 가져오기 ↙'}</span>
-                  </button>
-                )}
-
-                {onRestoreFromLocalBackup && hasLocalBackup && (
-                  <button
-                    type="button"
-                    onClick={handleManualRestore}
-                    disabled={isSyncingCloud || isPullingCloud}
-                    className="shrink-0 flex items-center justify-center gap-2 p-3.5 px-6 rounded-xs font-mono text-xs uppercase font-extrabold tracking-wider transition-all duration-300 border border-amber-500/40 bg-amber-950/20 text-amber-400 hover:bg-amber-500/15 hover:border-amber-400 active:scale-[0.98] cursor-pointer shadow-lg"
-                    id="admin-restore-backup-btn"
-                  >
-                    <RotateCcw size={13} />
-                    <span>최근 로컬 백업 복원 ↺</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          )
-        )}
 
         {/* Outer Split layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
@@ -1143,125 +859,10 @@ export const services: ServiceDetail[] = ${jsonServices};
                     [ GALLERY MEDIA LINKS // 포트폴리오 직접 미디어 URL 입력 ]
                   </span>
 
-                  {/* DIRECT FILE UPLOADER & PREVIEW ZONE */}
-                  <div className="border border-dark-border/60 bg-dark-bg/60 p-4 rounded-xs flex flex-col gap-3">
-                    <div className="flex items-center justify-between border-b border-dark-border/40 pb-2">
-                      <span className="font-mono text-[9px] text-accent uppercase tracking-widest block font-black">
-                        [ DIRECT MEDIA UPLOAD // 미디어 파일 직접 업로드 ]
-                      </span>
-                      <span className="text-[8px] font-sans text-dark-muted font-bold">
-                        HEIC 자동 변환 • 600px 스마트 리사이징 적용
-                      </span>
-                    </div>
 
-                    {/* Drag and Drop Zone */}
-                    <div
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={handleDrop}
-                      onClick={() => {
-                        const fileInput = document.getElementById('project-media-upload-input');
-                        if (fileInput) fileInput.click();
-                      }}
-                      className={`border-2 border-dashed rounded-xs p-5 text-center cursor-pointer transition-all duration-300 flex flex-col items-center justify-center gap-2 group ${
-                        isDragging
-                          ? 'border-accent bg-accent/10 text-white'
-                          : 'border-dark-border/80 hover:border-accent/50 bg-dark-bg/30 text-dark-muted hover:text-white'
-                      }`}
-                    >
-                      <input
-                        type="file"
-                        id="project-media-upload-input"
-                        multiple
-                        accept="image/*,video/*"
-                        onChange={handleFileUpload}
-                        className="hidden"
-                      />
-                      <Upload size={20} className={`transition-transform duration-300 group-hover:-translate-y-0.5 ${isDragging ? 'text-accent' : 'text-dark-muted group-hover:text-accent'}`} />
-                      <div className="flex flex-col gap-0.5 select-none">
-                        <p className="font-sans text-xs font-bold text-white/90">
-                          클릭하여 파일을 선택하거나 여기에 드래그 앤 드롭 하세요
-                        </p>
-                        <p className="font-sans text-[10px] text-dark-muted">
-                          지원 형식: JPG, PNG, WEBP, HEIC 및 MP4 등 영상
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Uploaded Files List */}
-                    {uploadedFiles.length > 0 && (
-                      <div className="mt-1 flex flex-col gap-2">
-                        <label className="font-mono text-[8px] text-dark-muted uppercase tracking-widest block font-black">
-                          UPLOADED FILES ({uploadedFiles.length})
-                        </label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[220px] overflow-y-auto pr-1 no-scrollbar">
-                          {uploadedFiles.map((file) => {
-                            const isRep = file.id === representativeId;
-                            return (
-                              <div
-                                key={file.id}
-                                className={`flex items-center gap-2.5 p-2 rounded-xs border transition-all ${
-                                  isRep
-                                    ? 'border-accent bg-accent/5'
-                                    : 'border-dark-border bg-dark-bg/30 hover:border-dark-border/80'
-                                }`}
-                              >
-                                {file.type === 'image' ? (
-                                  <img
-                                    src={file.url}
-                                    alt=""
-                                    className="w-10 h-10 object-cover rounded-xs border border-dark-border shrink-0"
-                                    referrerPolicy="no-referrer"
-                                  />
-                                ) : (
-                                  <div className="w-10 h-10 bg-dark-bg border border-dark-border rounded-xs flex items-center justify-center shrink-0">
-                                    <Film size={14} className="text-accent" />
-                                  </div>
-                                )}
-
-                                <div className="flex-1 min-w-0 text-left">
-                                  <p className="font-sans text-[10px] text-white font-bold truncate" title={file.name}>
-                                    {file.name}
-                                  </p>
-                                  <p className="font-mono text-[8px] text-dark-muted uppercase">
-                                    {file.type}
-                                  </p>
-                                </div>
-
-                                <div className="flex items-center gap-1 shrink-0">
-                                  {file.type === 'image' && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSetRepresentative(file.id)}
-                                      className={`p-1 rounded-xs transition-colors cursor-pointer select-none ${
-                                        isRep
-                                          ? 'bg-accent/15 text-accent border border-accent/20'
-                                          : 'hover:bg-dark-bg border border-transparent text-dark-muted hover:text-white'
-                                      }`}
-                                      title={isRep ? "현재 대표 이미지 지정됨" : "대표 이미지로 지정"}
-                                    >
-                                      <Star size={11} fill={isRep ? 'currentColor' : 'none'} />
-                                    </button>
-                                  )}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveUploadedFile(file.id)}
-                                    className="p-1 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 text-dark-muted hover:text-red-500 rounded-xs transition-colors cursor-pointer select-none"
-                                    title="제거"
-                                  >
-                                    <Trash2 size={11} />
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
 
                   {/* Photo Link */}
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-2 font-sans">
                     <div className="flex items-center justify-between">
                       <label className="font-mono text-[9px] text-white uppercase tracking-widest block font-bold">
                         PHOTO LINK (대표 사진 링크 - .jpg, .png, .webp 등 URL) *
@@ -1273,36 +874,73 @@ export const services: ServiceDetail[] = ${jsonServices};
                       placeholder="예시: https://i.ibb.co/.../image.jpg (필수)"
                       value={coverImage}
                       onChange={(e) => setCoverImage(e.target.value)}
-                      className="w-full bg-dark-bg border border-dark-border py-1.5 px-3 rounded-xs text-xs text-white focus:border-accent/50 focus:outline-none"
+                      className="w-full bg-dark-bg border border-dark-border py-1.5 px-3 rounded-xs text-xs text-white focus:border-accent/50 focus:outline-none font-mono"
                       id="form-cover-image-input"
                       required
                     />
 
+                    {coverImage && coverImage.trim().startsWith('http') && (
+                      <div className="mt-1 ml-1 flex items-center gap-3 p-2 bg-dark-bg/45 border border-dark-border/60 rounded-xs text-left">
+                        <img 
+                          src={coverImage.trim()} 
+                          alt="Cover preview" 
+                          className="w-12 h-12 object-cover border border-dark-border rounded-xs shrink-0"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="flex flex-col">
+                          <span className="font-mono text-[8px] text-accent uppercase tracking-widest font-black">CURRENT COVER PHOTO PREVIEW // 대표 사진 미리보기</span>
+                          <span className="text-[10px] text-dark-muted font-sans mt-0.5">이 이미지가 현재 게시물의 메인 대표 사진으로 지정되어 있습니다.</span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Dynamic Additional Photo Links */}
                     {additionalImages.map((imgUrl, index) => (
-                      <div key={index} className="flex gap-2 items-center mt-1.5 animate-fadeIn">
-                        <span className="font-mono text-[9px] text-accent font-bold shrink-0 min-w-[20px]">#{index + 1}</span>
-                        <input
-                          type="url"
-                          placeholder={`추가 사진 링크 #${index + 1} (예시: https://...)`}
-                          value={imgUrl}
-                          onChange={(e) => {
-                            const newImgs = [...additionalImages];
-                            newImgs[index] = e.target.value;
-                            setAdditionalImages(newImgs);
-                          }}
-                          className="flex-1 bg-dark-bg border border-dark-border py-1.5 px-3 rounded-xs text-xs text-white focus:border-accent/50 focus:outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAdditionalImages(additionalImages.filter((_, idx) => idx !== index));
-                          }}
-                          className="p-1.5 border border-red-500/30 hover:border-red-500 bg-red-500/5 hover:bg-red-500/10 text-red-500 hover:text-white rounded-xs transition-colors cursor-pointer shrink-0"
-                          title="삭제"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                      <div key={index} className="flex flex-col gap-1.5 mt-2 p-2 bg-dark-bg/25 border border-dark-border/40 rounded-xs animate-fadeIn text-left">
+                        <div className="flex gap-2 items-center">
+                          <span className="font-mono text-[9px] text-accent font-bold shrink-0 min-w-[20px]">#{index + 1}</span>
+                          <input
+                            type="url"
+                            placeholder={`추가 사진 링크 #${index + 1} (예시: https://...)`}
+                            value={imgUrl}
+                            onChange={(e) => {
+                              const newImgs = [...additionalImages];
+                              newImgs[index] = e.target.value;
+                              setAdditionalImages(newImgs);
+                            }}
+                            className="flex-grow bg-dark-bg border border-dark-border py-1.5 px-3 rounded-xs text-xs text-white focus:border-accent/50 focus:outline-none font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAdditionalImages(additionalImages.filter((_, idx) => idx !== index));
+                            }}
+                            className="p-1.5 border border-red-500/30 hover:border-red-500 bg-red-500/5 hover:bg-red-500/10 text-red-500 hover:text-white rounded-xs transition-colors cursor-pointer shrink-0"
+                            title="삭제"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+
+                        {imgUrl && imgUrl.trim().startsWith('http') && (
+                          <div className="flex items-center gap-3 mt-1.5 ml-7 p-1.5 bg-dark-bg/50 border border-dark-border/30 rounded-xs">
+                            <img
+                              src={imgUrl.trim()}
+                              alt={`Supplementary preview ${index + 1}`}
+                              className="w-10 h-10 object-cover border border-dark-border/60 rounded-xs shrink-0"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleSetAsCover(index)}
+                                className="px-2 py-1 bg-accent hover:bg-[#fa8743] text-black text-[8px] font-mono font-black rounded-xs tracking-wider uppercase transition-colors cursor-pointer"
+                              >
+                                [ SET AS MAIN COVER // 대표 사진으로 지정 ]
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
 
@@ -1314,6 +952,152 @@ export const services: ServiceDetail[] = ${jsonServices};
                       <Plus size={11} />
                       <span>사진 링크 추가 (ADD PHOTO LINK)</span>
                     </button>
+                  </div>
+
+                  {/* API 연동 및 일괄 uploader 창 - 보관함 기능은 제외하고 uploader 기능은 유지 */}
+                  <div className="border border-dark-border bg-dark-bg/60 p-4 rounded-xs flex flex-col gap-3 font-sans">
+                    <div className="flex items-center justify-between border-b border-dark-border/40 pb-2">
+                      <span className="font-mono text-[9px] text-accent uppercase tracking-widest block font-black flex items-center gap-1">
+                        <Database size={11} className="text-accent" />
+                        [ IMGBB CLOUD INTEGRATION CENTER // ImgBB 클라우드 연동 제어 창 ]
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col gap-2 text-left">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-[8px] text-dark-muted uppercase tracking-widest block font-black">
+                          ImgBB API Key 등록
+                        </span>
+                        <a
+                          href="https://api.imgbb.com/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[8px] font-sans text-accent hover:underline"
+                        >
+                          무료 키 발급받기 →
+                        </a>
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          placeholder="ImgBB API 키를 입력하세요 (자동 로컬 보존)"
+                          value={imgbbApiKey}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            setImgbbApiKey(val);
+                            try {
+                              localStorage.setItem('orange_archive_imgbb_key', val);
+                            } catch (_) {}
+                          }}
+                          className="bg-dark-bg/90 border border-dark-border text-[10px] px-2.5 py-1.5 rounded-xs focus:outline-none focus:border-accent text-white placeholder:text-dark-muted flex-grow font-mono"
+                        />
+                        {imgbbApiKey ? (
+                          <div className="flex items-center justify-center px-2.5 py-1 sm:py-0 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[9px] font-bold rounded-xs whitespace-nowrap">
+                            ● 클라우드 활성화됨
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center px-2.5 py-1 sm:py-0 bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-[9px] font-bold rounded-xs whitespace-nowrap">
+                            ▲ API 키 미등록
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-[9px] text-dark-muted font-sans leading-relaxed">
+                        API 키를 연동하면 ImgBB 클라우드 서버로 사진을 여러 장 선택하여 초고속으로 동시 전송하고, URL을 즉시 자동 삽입할 수 있습니다.
+                      </p>
+                    </div>
+
+                    {/* Quick file uploader inside API coupling center */}
+                    <div className="p-3 bg-dark-bg/40 border border-dark-border/60 rounded-xs flex flex-col gap-2 text-left">
+                      <span className="font-mono text-[8px] text-accent uppercase tracking-widest block font-black">
+                        [ QUICK IMGBB MULTI-UPLOADER // 클라우드 초고속 다중 업로드 ]
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          id="quick-imgbb-upload"
+                          className="hidden"
+                          multiple
+                          onChange={async (e) => {
+                            const files = e.target.files;
+                            if (!files || files.length === 0) return;
+                            
+                            const fileArray = Array.from(files) as File[];
+                            const totalFiles = fileArray.length;
+                            
+                            setIsUploadingToImgBB(true);
+                            setUploadProgress(`0/${totalFiles} 업로드 시작...`);
+                            
+                            let successCount = 0;
+                            let firstUrl = '';
+                            const additionalUrls: string[] = [];
+                            
+                            showToast(`총 ${totalFiles}개의 사진 일괄 업로드를 순차적으로 시작합니다.`, 'info');
+
+                            for (let i = 0; i < totalFiles; i++) {
+                              const file = fileArray[i];
+                              setUploadProgress(`[${i + 1}/${totalFiles}] "${file.name}" 전송 중...`);
+                              
+                              try {
+                                const url = await uploadAndGetUrl(file, true);
+                                if (url) {
+                                  if (i === 0) {
+                                    firstUrl = url;
+                                  } else {
+                                    additionalUrls.push(url);
+                                  }
+                                  successCount++;
+                                }
+                              } catch (err) {
+                                console.error(`Failed to upload ${file.name}:`, err);
+                              }
+                            }
+                            
+                            setIsUploadingToImgBB(false);
+                            setUploadProgress(null);
+                            
+                            if (successCount > 0) {
+                              if (!coverImage && firstUrl) {
+                                setCoverImage(firstUrl);
+                                if (additionalUrls.length > 0) {
+                                  setAdditionalImages(prev => [...prev, ...additionalUrls]);
+                                }
+                                showToast(`성공적으로 ${successCount}개의 이미지를 업로드했습니다! 첫 사진이 대표 이미지로 지정되고 나머지는 추가 사진으로 등록되었습니다.`, 'success');
+                              } else {
+                                const combinedUrls = [];
+                                if (firstUrl) combinedUrls.push(firstUrl);
+                                if (additionalUrls.length > 0) combinedUrls.push(...additionalUrls);
+                                
+                                setAdditionalImages(prev => [...prev, ...combinedUrls]);
+                                showToast(`성공적으로 ${successCount}개의 이미지를 업로드하여 추가 사진 목록에 모두 등록했습니다!`, 'success');
+                              }
+                              await loadLibraryData(true);
+                            } else {
+                              showToast(`이미지 업로드에 실패했습니다. API 키 및 네트워크 상태를 확인해 주세요.`, 'error');
+                            }
+                            
+                            // Reset input value to allow uploading the same files again
+                            e.target.value = '';
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => document.getElementById('quick-imgbb-upload')?.click()}
+                          disabled={!imgbbApiKey || isUploadingToImgBB}
+                          className={`flex-grow py-2 border border-dashed text-[10px] font-mono rounded-xs transition-colors cursor-pointer text-center ${
+                            imgbbApiKey 
+                              ? 'border-accent/40 hover:border-accent text-accent hover:bg-accent/5' 
+                              : 'border-dark-border text-dark-muted cursor-not-allowed'
+                          }`}
+                        >
+                          {isUploadingToImgBB 
+                            ? (uploadProgress || '업로드 중...') 
+                            : imgbbApiKey 
+                              ? '다중 사진 선택 및 일괄 업로드 (여러 장 동시 지원) ↗' 
+                              : 'ImgBB API 키가 필요합니다'}
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Video Link */}
@@ -1520,89 +1304,14 @@ export const services: ServiceDetail[] = ${jsonServices};
               </div>
             </div>
 
-            {/* RAW Backup Synchronizer (Very pro, provides ultimate robustness for drafts) */}
-            <div className="bg-dark-card border border-dark-border p-6 rounded-sm shadow-xl flex flex-col text-left">
-              <div className="flex items-center gap-2 mb-4 border-b border-dark-border pb-3">
-                <FileText size={14} className="text-accent" />
-                <h3 className="font-syne text-xs uppercase text-white font-extrabold tracking-widest">
-                  DATA RECOVERY CENTRE (데이터 백업 및 백업 복원소)
-                </h3>
-              </div>
 
-              <p className="font-sans text-[11px] text-dark-muted leading-relaxed mb-4">
-                브라우저 내부 캐시가 소거되더라도 백업에 문제가 없도록, 포트폴리오 정보를 원형 JSON 백업 데이터로 저장하거나 로딩할 수 있습니다.
-              </p>
-
-              {backupSuccessMsg && (
-                <div className="text-[10px] font-mono text-accent bg-accent-dim/15 border border-accent/25 p-2 rounded-xs select-text block mb-3">
-                  {backupSuccessMsg}
-                </div>
-              )}
-
-              <textarea
-                rows={1}
-                className="hidden"
-                readOnly
-                value={jsonBackupText}
-              />
-
-              <input
-                type="file"
-                ref={backupFileInputRef}
-                accept=".json"
-                onChange={handleBackupFileImport}
-                className="hidden"
-              />
-
-              <div className="flex flex-col sm:flex-row gap-3">
-                <button
-                  type="button"
-                  onClick={handleBackupExport}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-accent hover:bg-accent hover:text-black text-accent text-[10px] font-mono rounded-xs transition-all duration-300 cursor-pointer select-none"
-                  id="backup-export-btn"
-                >
-                  <Download size={13} />
-                  DOWNLOAD BACKUP FILE (.json)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => backupFileInputRef.current?.click()}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 border border-dark-border hover:border-accent text-dark-muted hover:text-white text-[10px] font-mono rounded-xs transition-all duration-300 cursor-pointer select-none"
-                  id="backup-file-import-btn"
-                >
-                  <Upload size={13} />
-                  UPLOAD BACKUP FILE (.json)
-                </button>
-              </div>
-
-              <div className="mt-5 border-t border-dark-border pt-4">
-                <label className="block text-[10px] font-mono text-dark-muted uppercase tracking-wider mb-2">
-                  OR RAW TEXT PASTE RESTORE (또는 텍스트 직접 붙여넣기 복원)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="텍스트 복사/붙여넣기를 사용하려면 여기에 직접 JSON 백업 데이터를 붙여넣은 뒤 아래 복원 단추를 눌러주세요."
-                  value={jsonBackupText}
-                  onChange={(e) => setJsonBackupText(e.target.value)}
-                  className="w-full bg-dark-bg border border-dark-border font-mono text-[9px] leading-normal p-2.5 rounded-xs text-dark-muted focus:text-white focus:outline-none mb-2"
-                  id="raw-backup-textarea"
-                />
-                <button
-                  type="button"
-                  onClick={handleBackupImport}
-                  className="w-full py-2 border border-dashed border-dark-border hover:border-accent text-dark-muted hover:text-white text-[10px] font-mono rounded-xs transition-colors cursor-pointer select-none"
-                  id="backup-import-btn"
-                >
-                  RESTORE FROM RAW TEXT CODE
-                </button>
-              </div>
-            </div>
 
           </div>
 
         </div>
 
       </div>
+
     </section>
   );
 }

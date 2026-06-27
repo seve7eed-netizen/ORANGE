@@ -474,3 +474,62 @@ export async function deleteProjectFromFirestore(projectId: string): Promise<voi
     handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
+
+const IMGBB_COLLECTION = 'imgbb_library';
+
+export interface ImgbbImage {
+  id: string;
+  url: string;
+  name: string;
+  projectTitle?: string;
+  uploadedAt: number;
+}
+
+/**
+ * Saves an uploaded ImgBB image URL and metadata to Firestore.
+ */
+export async function saveImgbbImageToFirestore(url: string, name: string, projectTitle = '미분류'): Promise<void> {
+  try {
+    const id = 'imgbb_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+    const docRef = doc(db, IMGBB_COLLECTION, id);
+    await setDoc(docRef, {
+      id,
+      url,
+      name,
+      projectTitle,
+      uploadedAt: Date.now()
+    });
+  } catch (error) {
+    console.warn('Failed to save ImgBB image metadata:', error);
+  }
+}
+
+/**
+ * Loads all uploaded ImgBB images from Firestore.
+ */
+export async function loadImgbbImagesFromFirestore(): Promise<ImgbbImage[]> {
+  try {
+    const querySnapshot = await getDocs(collection(db, IMGBB_COLLECTION));
+    const list: ImgbbImage[] = [];
+    querySnapshot.forEach((docSnap) => {
+      list.push(docSnap.data() as ImgbbImage);
+    });
+    return list.sort((a, b) => b.uploadedAt - a.uploadedAt);
+  } catch (error) {
+    console.warn('Failed to load ImgBB images:', error);
+    return [];
+  }
+}
+
+/**
+ * Deletes an uploaded ImgBB image log from Firestore.
+ */
+export async function deleteImgbbImageFromFirestore(id: string): Promise<void> {
+  try {
+    const docRef = doc(db, IMGBB_COLLECTION, id);
+    await deleteDoc(docRef);
+  } catch (error) {
+    console.warn('Failed to delete ImgBB image reference:', error);
+  }
+}
+

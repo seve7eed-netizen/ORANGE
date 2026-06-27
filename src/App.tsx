@@ -255,13 +255,17 @@ export default function App() {
 
         // 2. Fetch from cloud (Firestore) as the primary source in real-time
         console.log('Subscribing to Firestore cloud changes...');
-        const hasBeenSeeded = await getSeededStatusFromFirestore();
+        let hasBeenSeeded = await getSeededStatusFromFirestore();
 
         unsubscribe = subscribeToProjectsFromFirestore(
           async (cloudProjects) => {
             let finalProjects = cloudProjects.filter(p => !isForbidden(p));
             console.log(`Real-time update: received ${finalProjects.length} projects from cloud.`);
             
+            if (finalProjects.length > 0) {
+              hasBeenSeeded = true; // Dynamically mark as initialized because active project data exists in cloud
+            }
+
             if (finalProjects.length > 0 || hasBeenSeeded) {
               setProjects(finalProjects);
               try {
@@ -272,6 +276,7 @@ export default function App() {
               // Cloud was empty & never seeded. Seed initial projects.
               let seedProjects = localProjectsList.length > 0 ? localProjectsList : initialProjects.filter(p => !isForbidden(p));
               setProjects(seedProjects);
+              hasBeenSeeded = true; // Instantly lock seed status to prevent recursive loops
               try {
                 localStorage.setItem('orange_archive_v2_portfolios', JSON.stringify(seedProjects));
                 await BulletproofDB.saveAll(seedProjects);

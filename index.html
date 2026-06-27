@@ -1,13 +1,850 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Google AI Studio App</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ORANGE ARCHIVE — 김장섭 (Orange)</title>
+  
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="./style.css" />
+  
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            accent: '#F37021',
+            'accent-dim': 'rgba(243, 112, 33, 0.15)',
+            'dark-bg': '#121110',
+            'dark-card': '#1a1918',
+            'dark-border': '#2b2927',
+            'dark-text': '#eceae7',
+            'dark-muted': '#9d9690',
+          },
+          fontFamily: {
+            sans: ['SUIT', 'Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+            syne: ['Syne', 'sans-serif'],
+            outfit: ['Outfit', 'sans-serif'],
+            sync: ['Syncopate', 'sans-serif'],
+            antonio: ['Antonio', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  
+  <!-- Lucide Icons via CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- JSZip for client-side zip creation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body class="bg-dark-bg text-dark-text font-sans selection:bg-accent selection:text-black min-h-screen flex flex-col justify-between">
 
+  <!-- Header Section -->
+  <header class="fixed top-0 left-0 w-full z-40 bg-dark-bg/90 backdrop-blur-md border-b border-dark-border/40 transition-all duration-300 px-6 sm:px-12 py-4 flex items-center justify-between pointer-events-none opacity-0">
+    <div class="flex items-center gap-2 pointer-events-auto">
+      <a href="#" onclick="navigateToTab('home')" class="flex items-center gap-1.5 select-none">
+        <span class="font-sync text-sm font-black tracking-widest text-white hover:text-accent transition-colors">ORANGE</span>
+        <span class="w-1.5 h-1.5 bg-accent rounded-full animate-pulse"></span>
+        <span class="font-mono text-[9px] font-black tracking-wider text-dark-muted hidden sm:inline">ARCHIVE</span>
+      </a>
+    </div>
+
+    <!-- Desktop Navigation -->
+    <nav class="hidden md:flex items-center gap-8 pointer-events-auto">
+      <button id="nav-home" onclick="navigateToTab('home')" class="font-outfit text-[11px] font-extrabold tracking-widest cursor-pointer select-none text-accent transition-colors">HOME</button>
+      <button id="nav-philosophy" onclick="navigateToTab('philosophy')" class="font-outfit text-[11px] font-semibold tracking-widest cursor-pointer select-none text-dark-muted hover:text-white transition-colors">PHILOSOPHY</button>
+      <button id="nav-gallery" onclick="navigateToTab('gallery')" class="font-outfit text-[11px] font-semibold tracking-widest cursor-pointer select-none text-dark-muted hover:text-white transition-colors">EXHIBITION GALLERY</button>
+    </nav>
+
+    <!-- Header Tools (Right Side) -->
+    <div class="flex items-center gap-4 pointer-events-auto">
+      <!-- Live Clock -->
+      <div class="hidden sm:flex items-center gap-1.5 font-mono text-[10px] text-dark-muted border border-dark-border/60 bg-dark-card/50 px-2.5 py-1 rounded-sm select-none">
+        <span class="w-1 h-1 bg-emerald-500 rounded-full animate-ping"></span>
+        <span>UTC</span>
+        <span id="live-clock">00:00:00</span>
+      </div>
+
+      <!-- Workspace Entrance Gate -->
+      <button id="header-admin-btn" onclick="openAdminAccess()" class="flex items-center gap-2 px-3 py-1.5 rounded-sm border border-dark-border bg-dark-card text-dark-muted font-mono text-[10px] tracking-wider font-semibold cursor-pointer transition-all duration-300 group hover:border-accent hover:text-accent">
+        <i data-lucide="lock" class="w-3 h-3 group-hover:rotate-12 transition-transform"></i>
+        <span>WORKSPACE</span>
+      </button>
+
+      <!-- Logout (Admin only) -->
+      <button id="header-logout-btn" onclick="logoutAdmin()" class="hidden p-1.5 rounded-sm border border-red-500/30 hover:border-red-500 bg-red-500/5 hover:bg-red-500/10 text-red-500 hover:text-white transition-all cursor-pointer select-none shrink-0" title="안전 로그아웃">
+        <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+      </button>
+
+      <!-- Mobile Menu Hamburger -->
+      <button onclick="document.getElementById('mobile-menu-dropdown').classList.toggle('hidden')" class="md:hidden p-1.5 rounded-sm border border-dark-border text-dark-muted hover:text-white cursor-pointer select-none shrink-0">
+        <i data-lucide="menu" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile Menu Dropdown -->
+  <div id="mobile-menu-dropdown" class="hidden fixed top-16 left-0 w-full z-40 bg-dark-bg/95 border-b border-dark-border py-6 px-6 flex flex-col gap-4 text-left md:hidden backdrop-blur-md">
+    <button id="mobile-nav-home" onclick="navigateToTab('home')" class="mobile-nav-btn text-left font-outfit text-xs font-bold tracking-widest text-accent">HOME</button>
+    <button id="mobile-nav-philosophy" onclick="navigateToTab('philosophy')" class="mobile-nav-btn text-left font-outfit text-xs font-bold tracking-widest text-dark-muted">PHILOSOPHY</button>
+    <button id="mobile-nav-gallery" onclick="navigateToTab('gallery')" class="mobile-nav-btn text-left font-outfit text-xs font-bold tracking-widest text-dark-muted">EXHIBITION GALLERY</button>
+    <div class="h-[1px] bg-dark-border/40 w-full my-1"></div>
+    <div class="flex items-center gap-2 font-mono text-[9px] text-dark-muted">
+      <span class="w-1.5 h-1.5 bg-accent rounded-full animate-pulse"></span>
+      <span>ORANGE ARCHIVE CLIENT WORKPLACE</span>
+    </div>
+  </div>
+
+  <!-- Main Sections Content Container -->
+  <main id="main-sections-container" class="flex-grow">
+    
+    <!-- SECTION 1: HERO PORTAL -->
+    <section id="section-home" class="relative -mt-16 h-[100dvh] w-full flex flex-col items-center justify-center bg-black px-4 md:px-8 overflow-hidden z-20 select-none">
+      <div class="absolute inset-0 bg-[radial-gradient(#1e1d1c_1px,transparent_1.5px)] [background-size:16px_16px] opacity-40 pointer-events-none"></div>
+      
+      <!-- Immersive centered logo -->
+      <div class="w-full max-w-4xl flex flex-col items-center uppercase relative z-10 animate-fadeIn select-none" style="animation-duration: 1.8s;">
+        <div class="w-full flex items-center justify-center relative">
+          <svg 
+            viewBox="0 0 890 550" 
+            class="w-full h-auto text-accent select-none pointer-events-none" 
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <defs>
+              <!-- Vintage high-end camera viewfinder halation/glow filter -->
+              <filter id="breathing-glow" x="-30%" y="-30%" width="160%" height="160%">
+                <feGaussianBlur stdDeviation="8" result="blur"></feGaussianBlur>
+                <feComponentTransfer in="blur" result="glow">
+                  <feFuncA type="linear" slope="2.2"></feFuncA>
+                </feComponentTransfer>
+                <feMerge>
+                  <feMergeNode in="glow"></feMergeNode>
+                  <feMergeNode in="SourceGraphic"></feMergeNode>
+                </feMerge>
+              </filter>
+            </defs>
+            <g>
+              <!-- 1. Vintage racing track lines (Concentric, extremely fine 1.5px lines) -->
+              <g>
+                <path 
+                  d="M 290,105 L 600,105 A 170,170 0 0,1 770,275 A 170,170 0 0,1 600,445 L 290,445 A 170,170 0 0,1 120,275 A 170,170 0 0,1 290,105 Z" 
+                  fill="none" 
+                  stroke="#F37021" 
+                  stroke-width="1.5" 
+                  opacity="0.45"
+                ></path>
+                <path 
+                  d="M 290,105 L 600,105 A 170,170 0 0,1 770,275 A 170,170 0 0,1 600,445 L 290,445 A 170,170 0 0,1 120,275 A 170,170 0 0,1 290,105 Z" 
+                  fill="none" 
+                  stroke="#F37021" 
+                  stroke-width="2.5" 
+                  filter="url(#breathing-glow)"
+                >
+                  <animate 
+                    attributeName="opacity" 
+                    values="0.05; 0.95; 0.05" 
+                    dur="3.8s" 
+                    repeatCount="indefinite" 
+                    calcMode="spline"
+                    keySplines="0.4 0 0.2 1; 0.4 0 0.2 1"
+                  ></animate>
+                </path>
+              </g>
+              
+              <g>
+                <path 
+                  d="M 290,137 L 600,137 A 138,138 0 0,1 738,275 A 138,138 0 0,1 600,413 L 290,413 A 138,138 0 0,1 152,275 A 138,138 0 0,1 290,137 Z" 
+                  fill="none" 
+                  stroke="#ffffff" 
+                  stroke-width="1" 
+                  stroke-dasharray="5 7"
+                  opacity="0.25"
+                ></path>
+                <path 
+                  d="M 290,137 L 600,137 A 138,138 0 0,1 738,275 A 138,138 0 0,1 600,413 L 290,413 A 138,138 0 0,1 152,275 A 138,138 0 0,1 290,137 Z" 
+                  fill="none" 
+                  stroke="#ffffff" 
+                  stroke-width="1.5" 
+                  stroke-dasharray="5 7"
+                  filter="url(#breathing-glow)"
+                >
+                  <animate 
+                    attributeName="opacity" 
+                    values="0.05; 0.45; 0.05" 
+                    dur="3.8s" 
+                    repeatCount="indefinite" 
+                    calcMode="spline"
+                    keySplines="0.4 0 0.2 1; 0.4 0 0.2 1"
+                  ></animate>
+                </path>
+              </g>
+
+              <g>
+                <path 
+                  d="M 290,170 L 600,170 A 105,105 0 0,1 705,275 A 105,105 0 0,1 600,380 L 290,380 A 105,105 0 0,1 185,275 A 105,105 0 0,1 290,170 Z" 
+                  fill="none" 
+                  stroke="#F37021" 
+                  stroke-width="1.5" 
+                  opacity="0.45"
+                ></path>
+                <path 
+                  d="M 290,170 L 600,170 A 105,105 0 0,1 705,275 A 105,105 0 0,1 600,380 L 290,380 A 105,105 0 0,1 185,275 A 105,105 0 0,1 290,170 Z" 
+                  fill="none" 
+                  stroke="#F37021" 
+                  stroke-width="2.5" 
+                  filter="url(#breathing-glow)"
+                >
+                  <animate 
+                    attributeName="opacity" 
+                    values="0.05; 0.95; 0.05" 
+                    dur="3.8s" 
+                    repeatCount="indefinite" 
+                    calcMode="spline"
+                    keySplines="0.4 0 0.2 1; 0.4 0 0.2 1"
+                  ></animate>
+                </path>
+              </g>
+
+              <!-- Starting grid thin tick lines -->
+              <g>
+                <line x1="290" y1="105" x2="290" y2="170" stroke="#F37021" stroke-width="1" opacity="0.35"></line>
+                <line x1="290" y1="105" x2="290" y2="170" stroke="#F37021" stroke-width="1.5" filter="url(#breathing-glow)">
+                  <animate 
+                    attributeName="opacity" 
+                    values="0.05; 0.95; 0.05" 
+                    dur="3.8s" 
+                    repeatCount="indefinite" 
+                    calcMode="spline"
+                    keySplines="0.4 0 0.2 1; 0.4 0 0.2 1"
+                  ></animate>
+                </line>
+              </g>
+              <g>
+                <line x1="600" y1="105" x2="600" y2="170" stroke="#F37021" stroke-width="1" opacity="0.35"></line>
+                <line x1="600" y1="105" x2="600" y2="170" stroke="#F37021" stroke-width="1.5" filter="url(#breathing-glow)">
+                  <animate 
+                    attributeName="opacity" 
+                    values="0.05; 0.95; 0.05" 
+                    dur="3.8s" 
+                    repeatCount="indefinite" 
+                    calcMode="spline"
+                    keySplines="0.4 0 0.2 1; 0.4 0 0.2 1"
+                  ></animate>
+                </line>
+              </g>
+              <g>
+                <line x1="290" y1="380" x2="290" y2="445" stroke="#F37021" stroke-width="1" opacity="0.35"></line>
+                <line x1="290" y1="380" x2="290" y2="445" stroke="#F37021" stroke-width="1.5" filter="url(#breathing-glow)">
+                  <animate 
+                    attributeName="opacity" 
+                    values="0.05; 0.95; 0.05" 
+                    dur="3.8s" 
+                    repeatCount="indefinite" 
+                    calcMode="spline"
+                    keySplines="0.4 0 0.2 1; 0.4 0 0.2 1"
+                  ></animate>
+                </line>
+              </g>
+              <g>
+                <line x1="600" y1="380" x2="600" y2="445" stroke="#F37021" stroke-width="1" opacity="0.35"></line>
+                <line x1="600" y1="380" x2="600" y2="445" stroke="#F37021" stroke-width="1.5" filter="url(#breathing-glow)">
+                  <animate 
+                    attributeName="opacity" 
+                    values="0.05; 0.95; 0.05" 
+                    dur="3.8s" 
+                    repeatCount="indefinite" 
+                    calcMode="spline"
+                    keySplines="0.4 0 0.2 1; 0.4 0 0.2 1"
+                  ></animate>
+                </line>
+              </g>
+
+              <!-- 2. Brand Typography (static actual size) -->
+              <g transform="translate(445, 260)" text-anchor="middle">
+                <text 
+                  x="0" 
+                  y="0" 
+                  font-family="'Syncopate', sans-serif" 
+                  font-weight="700" 
+                  font-size="38" 
+                  fill="#ffffff" 
+                  letter-spacing="3"
+                  dominant-baseline="middle"
+                  class="select-none pointer-events-none"
+                >
+                  ORANGE
+                </text>
+
+                <!-- Pulsing breathing white glow layer -->
+                <text 
+                  x="0" 
+                  y="0" 
+                  font-family="'Syncopate', sans-serif" 
+                  font-weight="700" 
+                  font-size="38" 
+                  fill="#ffffff" 
+                  letter-spacing="3"
+                  dominant-baseline="middle"
+                  filter="url(#breathing-glow)"
+                  class="select-none pointer-events-none"
+                >
+                  ORANGE
+                  <animate 
+                    attributeName="opacity" 
+                    values="0.05; 0.95; 0.05" 
+                    dur="3.8s" 
+                    repeatCount="indefinite" 
+                    calcMode="spline"
+                    keySplines="0.4 0 0.2 1; 0.4 0 0.2 1"
+                  ></animate>
+                </text>
+              </g>
+
+              <!-- "ON THE TRACK" subtitle with breathing glow -->
+              <g>
+                <text 
+                  x="445" 
+                  y="320" 
+                  font-family="'Antonio', 'SUIT', sans-serif" 
+                  font-weight="700" 
+                  font-size="17" 
+                  fill="#9d9690" 
+                  text-anchor="middle" 
+                  dominant-baseline="middle" 
+                  letter-spacing="16"
+                  class="opacity-90 select-none pointer-events-none"
+                >
+                  ON THE TRACK
+                </text>
+                <text 
+                  x="445" 
+                  y="320" 
+                  font-family="'Antonio', 'SUIT', sans-serif" 
+                  font-weight="700" 
+                  font-size="17" 
+                  fill="#ffffff" 
+                  text-anchor="middle" 
+                  dominant-baseline="middle" 
+                  letter-spacing="16"
+                  filter="url(#breathing-glow)"
+                  class="select-none pointer-events-none"
+                >
+                  ON THE TRACK
+                  <animate 
+                    attributeName="opacity" 
+                    values="0.05; 0.95; 0.05" 
+                    dur="3.8s" 
+                    repeatCount="indefinite" 
+                    calcMode="spline"
+                    keySplines="0.4 0 0.2 1; 0.4 0 0.2 1"
+                  ></animate>
+                </text>
+              </g>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Modern entrance CTA button -->
+      <div class="absolute bottom-16 flex flex-col items-center gap-3 z-10 animate-fadeIn" style="animation-delay: 1.5s; animation-fill-mode: both;">
+        <button
+          onclick="navigateToTab('philosophy')"
+          class="flex items-center gap-2 px-6 py-3 border border-accent/40 bg-accent-dim/15 hover:bg-accent text-accent hover:text-black font-mono text-[11px] tracking-[0.2em] font-bold rounded-sm transition-all duration-300 group cursor-pointer"
+          id="enter-site-btn"
+        >
+          <span>ENTER JOURNAL</span>
+          <i data-lucide="chevron-right" class="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform"></i>
+        </button>
+      </div>
+    </section>
+
+    <!-- SECTION 2: PHILOSOPHY -->
+    <section id="section-philosophy" class="py-24 sm:py-32 px-6 sm:px-12 border-t border-dark-border/40 bg-dark-bg">
+      <div class="max-w-7xl mx-auto flex flex-col gap-16 md:gap-24">
+        
+        <!-- Header Introduction -->
+        <div class="text-left max-w-3xl">
+          <span class="font-mono text-[10px] text-accent font-bold tracking-widest block mb-2 uppercase select-none">// CORE PHILOSOPHY</span>
+          <h2 class="font-syne text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-tight leading-none mb-6">
+            공간과 인물의 무드가 지닌<br/>본질적 가치를 영구히 아카이빙합니다.
+          </h2>
+          <p class="font-sans text-sm md:text-base text-dark-muted leading-relaxed font-light whitespace-pre-line">
+            빛과 그림자, 그리고 그 경계 속에서 피어오르는 유기적인 감성을 포착합니다.
+            단순한 정면 기록을 넘어 피사체 고유의 서사를 시네마틱 프레임 속에 녹여내어, 영원히 퇴색되지 않는 시각적 유산으로 구축합니다.
+          </p>
+        </div>
+
+        <!-- Pillar Grid (Service Pillars) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12">
+          
+          <!-- Pillar 1: Photography -->
+          <div class="group relative flex flex-col justify-between p-8 border border-dark-border bg-dark-card/25 hover:border-accent/40 rounded-sm transition-all duration-300">
+            <div class="text-left">
+              <div class="flex items-center justify-between mb-6">
+                <span class="font-mono text-[9px] text-accent font-bold tracking-widest select-none">[ PILLAR 01 ]</span>
+                <i data-lucide="camera" class="w-5 h-5 text-dark-muted group-hover:text-accent transition-colors"></i>
+              </div>
+              
+              <h3 class="font-syne text-xl font-bold text-white mb-1 uppercase tracking-tight">사진 촬영</h3>
+              <span class="font-mono text-[9px] text-dark-muted font-bold tracking-widest block mb-4 uppercase select-none">PHOTOGRAPHY</span>
+              <p class="font-sans text-xs text-dark-muted leading-relaxed font-light mb-8">
+                기하학적인 자연광 분석과 최상급 상업 조명 장비를 결합하여 오브제와 인물의 본질적 깊이를 포획합니다. 단순한 평면 기록이 아닌, 하셀블라드 기반의 공간감과 심도를 프레임 안에 입체적으로 설계합니다.
+              </p>
+            </div>
+
+            <div class="border-t border-dark-border/40 pt-6 text-left">
+              <span class="font-mono text-[9px] text-accent font-black tracking-wider block mb-3 select-none uppercase">[ SPECS & CAPABILITIES ]</span>
+              <div class="flex flex-wrap gap-2">
+                <span class="px-2.5 py-1 text-[9px] font-mono bg-dark-bg text-dark-muted border border-dark-border rounded-xs">하이 패션 룩북</span>
+                <span class="px-2.5 py-1 text-[9px] font-mono bg-dark-bg text-dark-muted border border-dark-border rounded-xs">건축 스페이스 아카이빙</span>
+                <span class="px-2.5 py-1 text-[9px] font-mono bg-dark-bg text-dark-muted border border-dark-border rounded-xs">프리미엄 미니멀 초상</span>
+                <span class="px-2.5 py-1 text-[9px] font-mono bg-dark-bg text-dark-muted border border-dark-border rounded-xs">라이프스타일 브랜드 컷</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pillar 2: Videography -->
+          <div class="group relative flex flex-col justify-between p-8 border border-dark-border bg-dark-card/25 hover:border-accent/40 rounded-sm transition-all duration-300">
+            <div class="text-left">
+              <div class="flex items-center justify-between mb-6">
+                <span class="font-mono text-[9px] text-accent font-bold tracking-widest select-none">[ PILLAR 02 ]</span>
+                <i data-lucide="film" class="w-5 h-5 text-dark-muted group-hover:text-accent transition-colors"></i>
+              </div>
+              
+              <h3 class="font-syne text-xl font-bold text-white mb-1 uppercase tracking-tight">영상 촬영</h3>
+              <span class="font-mono text-[9px] text-dark-muted font-bold tracking-widest block mb-4 uppercase select-none">VIDEOGRAPHY & CINEMA</span>
+              <p class="font-sans text-xs text-dark-muted leading-relaxed font-light mb-8">
+                이야기와 감정의 궤도를 정밀하게 추적하는 고화질 시네마 레코딩을 주도합니다. 철저한 마스터 샷 계획, 조명 동선 설계, 핸드헬드와 정적 삼각대 구도를 결합해 세련되고 극적인 시각 서사를 가꿉니다.
+              </p>
+            </div>
+
+            <div class="border-t border-dark-border/40 pt-6 text-left">
+              <span class="font-mono text-[9px] text-accent font-black tracking-wider block mb-3 select-none uppercase">[ SPECS & CAPABILITIES ]</span>
+              <div class="flex flex-wrap gap-2">
+                <span class="px-2.5 py-1 text-[9px] font-mono bg-dark-bg text-dark-muted border border-dark-border rounded-xs">크리에이티브 다큐멘터리</span>
+                <span class="px-2.5 py-1 text-[9px] font-mono bg-dark-bg text-dark-muted border border-dark-border rounded-xs">브랜드 무비 & 패션필름</span>
+                <span class="px-2.5 py-1 text-[9px] font-mono bg-dark-bg text-dark-muted border border-dark-border rounded-xs">비주얼 루프 아키텍쳐</span>
+                <span class="px-2.5 py-1 text-[9px] font-mono bg-dark-bg text-dark-muted border border-dark-border rounded-xs">4K/6K RAW 시네마 레코딩</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <!-- SECTION 3: EXHIBITION GALLERY (PORTFOLIOS) -->
+    <section id="section-gallery" class="py-24 sm:py-32 px-6 sm:px-12 border-t border-dark-border/40 bg-radial from-dark-card/10 via-dark-bg to-dark-bg">
+      <div class="max-w-7xl mx-auto">
+        
+        <!-- Header Controls (Filtering & Search) -->
+        <div class="flex flex-col gap-8 md:gap-12 mb-12 border-b border-dark-border/40 pb-10">
+          <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-6 text-left">
+            <div>
+              <span class="font-mono text-[10px] text-accent font-bold tracking-widest block mb-2 uppercase select-none">// WORKS SHOWROOM</span>
+              <h2 class="font-syne text-3xl sm:text-4xl font-extrabold text-white tracking-tight leading-none">EXHIBITION GALLERY</h2>
+            </div>
+            
+            <!-- Cabinet Count Spec -->
+            <div class="font-mono text-[10px] text-dark-muted flex items-center gap-2 select-none border border-dark-border bg-dark-card/40 px-3.5 py-2 rounded-xs w-fit">
+              <span>STORED_CABINETS :</span>
+              <span id="exhibition-count" class="text-accent font-black text-xs">0</span>
+              <span class="text-[8px] text-white/25">INDEXED</span>
+            </div>
+          </div>
+
+          <!-- Dynamic control interface -->
+          <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <!-- Filter Pills -->
+            <div class="flex flex-wrap gap-1.5 z-10">
+              <button id="filter-tab-all" onclick="setFilter('all')" class="filter-pill relative px-5 py-2.5 font-outfit text-xs tracking-wider transition-colors outline-none cursor-pointer select-none whitespace-nowrap rounded-sm text-black font-extrabold">
+                <span class="pill-bg absolute inset-0 bg-accent rounded-sm -z-10"></span>
+                ALL WORKS
+              </button>
+              <button id="filter-tab-photography" onclick="setFilter('photography')" class="filter-pill relative px-5 py-2.5 font-outfit text-xs font-semibold tracking-wider transition-colors outline-none cursor-pointer select-none whitespace-nowrap rounded-sm text-dark-muted hover:text-white">
+                PHOTOGRAPHY
+              </button>
+              <button id="filter-tab-videography" onclick="setFilter('videography')" class="filter-pill relative px-5 py-2.5 font-outfit text-xs font-semibold tracking-wider transition-colors outline-none cursor-pointer select-none whitespace-nowrap rounded-sm text-dark-muted hover:text-white">
+                VIDEOGRAPHY
+              </button>
+            </div>
+
+            <!-- Search Field -->
+            <div class="relative max-w-sm w-full">
+              <input 
+                id="gallery-search-input"
+                type="text" 
+                placeholder="작품명, 클라이언트, 태그 등으로 수색..." 
+                oninput="handleSearch(event)"
+                class="w-full bg-dark-card/60 border border-dark-border py-2.5 pl-10 pr-4 rounded-sm text-xs text-white placeholder-dark-muted focus:border-accent/40 focus:outline-none transition-colors font-sans"
+              />
+              <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-dark-muted"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Portfolios Grid -->
+        <div id="projects-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10">
+          <!-- Dynamically populated via script.js -->
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- SECTION 4: WORKSPACE (ADMIN DASHBOARD) - Hidden by default -->
+  <section id="admin-panel-section" class="hidden flex-grow py-24 sm:py-28 px-6 sm:px-12 bg-dark-bg text-left max-w-7xl mx-auto w-full">
+    <div class="flex flex-col gap-8 md:gap-12">
+      
+      <!-- Workspace Header -->
+      <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-6 border-b border-dark-border/40 pb-8">
+        <div>
+          <span class="font-mono text-[10px] text-accent font-bold tracking-widest block mb-2 uppercase select-none">// CABINET DESK</span>
+          <h2 class="font-syne text-2xl sm:text-3xl font-extrabold text-white tracking-tight leading-none uppercase">ORANGE ARCHIVE WORKSPACE</h2>
+        </div>
+        
+        <button onclick="navigateToTab('home')" class="flex items-center gap-2 px-3.5 py-2 border border-dark-border bg-dark-card hover:border-accent text-dark-muted hover:text-accent font-mono text-[10px] font-bold rounded-sm tracking-wider uppercase transition-colors cursor-pointer select-none">
+          <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+          <span>EXIT WORKSPACE // 전시관 퇴장</span>
+        </button>
+      </div>
+
+      <!-- Dashboard Layout -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-10">
+        
+        <!-- Left Side: Control Board Tabs (Col 1-8) -->
+        <div class="lg:col-span-8 flex flex-col gap-6">
+          
+          <!-- Workspace Menu Tabs -->
+          <div class="flex border-b border-dark-border/30">
+            <button id="admin-btn-tab-list" onclick="showAdminTab('list')" class="flex items-center gap-1.5 px-4 py-2 border-b-2 border-accent text-accent font-mono text-[10px] font-black uppercase tracking-wider select-none cursor-pointer">
+              <i data-lucide="folder-open" class="w-3 h-3"></i>
+              <span>EXHIBITION INDEX (전시 목록)</span>
+            </button>
+            <button id="admin-btn-tab-form" onclick="showAdminTab('form')" class="flex items-center gap-1.5 px-4 py-2 border-b-2 border-transparent text-dark-muted font-mono text-[10px] font-medium uppercase tracking-wider select-none cursor-pointer hover:text-white">
+              <i data-lucide="plus-circle" class="w-3 h-3"></i>
+              <span>REGISTER ENTRY (신규 전시 등록)</span>
+            </button>
+          </div>
+
+          <!-- PANE 1: PROJECT LIST INDEX -->
+          <div id="admin-tab-list" class="flex flex-col gap-4">
+            <div id="admin-projects-list-body" class="flex flex-col gap-3">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- PANE 2: ADD/EDIT FORM -->
+          <form id="admin-tab-form" onsubmit="handleProjectFormSubmit(event)" class="hidden flex flex-col gap-6 bg-dark-card/15 border border-dark-border/60 p-6 rounded-sm">
+            <h3 id="form-section-header" class="font-mono text-[10px] text-accent font-black uppercase tracking-widest border-b border-dark-border pb-2 block select-none mb-3">
+              [ 📁 EXHIBITION ENTRY LOGS // 신규 전시 작품 등록 ]
+            </h3>
+
+            <!-- 1. Title, Client -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div class="flex flex-col gap-1.5 text-left">
+                <label class="font-mono text-[9px] text-dark-muted font-bold uppercase tracking-wider">PROJECT TITLE // 작품 이름 (필수)</label>
+                <input required id="form-title" type="text" placeholder="예시: VACIA" class="bg-dark-bg border border-dark-border py-2 px-3 rounded-xs text-xs text-white focus:border-accent/40 focus:outline-none" />
+              </div>
+              <div class="flex flex-col gap-1.5 text-left">
+                <label class="font-mono text-[9px] text-dark-muted font-bold uppercase tracking-wider">CLIENT_ // 발주처 / 클라이언트 (필수)</label>
+                <input required id="form-client" type="text" placeholder="예시: VACIA 또는 개인 프로젝트" class="bg-dark-bg border border-dark-border py-2 px-3 rounded-xs text-xs text-white focus:border-accent/40 focus:outline-none" />
+              </div>
+            </div>
+
+            <!-- 2. Category, Period -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div class="flex flex-col gap-1.5 text-left">
+                <label class="font-mono text-[9px] text-dark-muted font-bold uppercase tracking-wider">CATEGORY_ // 작품 분야</label>
+                <select id="form-category" class="bg-dark-bg border border-dark-border py-2 px-3 rounded-xs text-xs text-white focus:border-accent/40 focus:outline-none font-mono">
+                  <option value="photography">PHOTOGRAPHY (사진 촬영)</option>
+                  <option value="videography">VIDEOGRAPHY (영상 촬영)</option>
+                </select>
+              </div>
+              <div class="flex flex-col gap-1.5 text-left">
+                <label class="font-mono text-[9px] text-dark-muted font-bold uppercase tracking-wider">TIMELINE_ // 제작 기간 / 타임라인</label>
+                <input id="form-period" type="text" placeholder="예시: 2024.11 또는 진행 중" class="bg-dark-bg border border-dark-border py-2 px-3 rounded-xs text-xs text-white focus:border-accent/40 focus:outline-none" />
+              </div>
+            </div>
+
+            <!-- 3. Scope, Tools -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div class="flex flex-col gap-1.5 text-left">
+                <label class="font-mono text-[9px] text-dark-muted font-bold uppercase tracking-wider">SCOPE_ // 수행 직무 (쉼표로 구분)</label>
+                <input id="form-scope" type="text" placeholder="예시: 촬영, 연출, 보정" class="bg-dark-bg border border-dark-border py-2 px-3 rounded-xs text-xs text-white focus:border-accent/40 focus:outline-none" />
+              </div>
+              <div class="flex flex-col gap-1.5 text-left">
+                <label class="font-mono text-[9px] text-dark-muted font-bold uppercase tracking-wider">TOOLS_ // 활용 도구 (쉼표로 구분)</label>
+                <input id="form-tools" type="text" placeholder="예시: Hasselblad, Premiere Pro" class="bg-dark-bg border border-dark-border py-2 px-3 rounded-xs text-xs text-white focus:border-accent/40 focus:outline-none" />
+              </div>
+            </div>
+
+            <!-- 4. Description -->
+            <div class="flex flex-col gap-1.5 text-left">
+              <label class="font-mono text-[9px] text-dark-muted font-bold uppercase tracking-wider">PROJECT DESCRIPTION_ // 세부 설명</label>
+              <textarea id="form-description" rows="4" placeholder="작품의 의도와 비하인드 스토리 등을 입력하세요." class="bg-dark-bg border border-dark-border py-2 px-3 rounded-xs text-xs text-white focus:border-accent/40 focus:outline-none font-sans leading-relaxed"></textarea>
+            </div>
+
+            <!-- 5. Cover Image -->
+            <div class="flex flex-col gap-1.5 text-left">
+              <label class="font-mono text-[9px] text-dark-muted font-bold uppercase tracking-wider">COVER IMAGE URL_ // 대표 사진 링크 (필수)</label>
+              <input required id="form-cover-image" type="url" placeholder="예시: https://i.ibb.co/..." class="bg-dark-bg border border-dark-border py-2 px-3 rounded-xs text-xs text-white focus:border-accent/40 focus:outline-none font-mono" />
+            </div>
+
+            <!-- 6. Video Stream URL -->
+            <div class="flex flex-col gap-1.5 text-left">
+              <label class="font-mono text-[9px] text-dark-muted font-bold uppercase tracking-wider">STREAMING VIDEO URL_ // 프로젝트 비디오 링크 (옵션)</label>
+              <input id="form-video-url" type="url" placeholder="YouTube, Vimeo 주소 또는 직접 mp4 동영상 링크" class="bg-dark-bg border border-dark-border py-2 px-3 rounded-xs text-xs text-white focus:border-accent/40 focus:outline-none font-mono" />
+            </div>
+
+            <!-- 7. Supplementary Images Multi Uploader -->
+            <div class="border border-dark-border/40 p-4 bg-dark-bg/15 rounded-xs flex flex-col gap-3 text-left">
+              <div class="flex items-center justify-between">
+                <span class="font-mono text-[9px] text-accent font-black uppercase tracking-widest select-none">[ SUPPLEMENTAL IMAGES ARCHIVE // 추가 전시 사진 ]</span>
+                <button type="button" onclick="addSupplementaryImageInput()" class="px-2.5 py-1.5 border border-dark-border bg-dark-card hover:border-accent hover:text-accent font-mono text-[9px] font-bold rounded-xs tracking-wider uppercase transition-colors cursor-pointer select-none">
+                  [ ADD ROW // 사진 행 추가 + ]
+                </button>
+              </div>
+
+              <!-- Quick multi uploader -->
+              <div class="flex items-center gap-3 border-t border-b border-dark-border/10 py-3 my-1">
+                <button type="button" onclick="handleImgbbUploadClick()" class="px-3 py-2 bg-accent/15 border border-accent/30 hover:border-accent hover:bg-accent/20 text-accent font-mono text-[9px] font-bold rounded-xs tracking-wider uppercase transition-all cursor-pointer">
+                  [ FAST IMGBB CLOUD MULTI-UPLOAD // 고속 다중 클라우드 업로드 ]
+                </button>
+                <input id="quick-imgbb-upload-input" type="file" accept="image/*" multiple class="hidden" onchange="triggerImgbbMultiUpload(this)" />
+                <span id="uploader-progress-text" class="hidden font-mono text-[9px] text-dark-muted animate-pulse">대기 중...</span>
+              </div>
+
+              <!-- Supplementary rows container -->
+              <div id="additional-images-inputs-container" class="flex flex-col gap-1">
+                <!-- Inputs generated dynamically -->
+              </div>
+            </div>
+
+            <!-- 8. Feature / Submit -->
+            <div class="flex items-center justify-between pt-4 border-t border-dark-border/30">
+              <label class="flex items-center gap-2 cursor-pointer select-none text-xs text-dark-muted hover:text-white">
+                <input id="form-featured" type="checkbox" class="accent-accent w-3.5 h-3.5" />
+                <span>메인 화면에 특선 추천작으로 게재 (Featured Archive)</span>
+              </label>
+
+              <div class="flex items-center gap-2">
+                <button type="button" onclick="clearProjectForm(); showAdminTab('list');" class="px-4 py-2 border border-dark-border text-dark-muted font-mono text-[10px] font-bold tracking-wider rounded-xs hover:text-white cursor-pointer select-none">
+                  [ CANCEL // 취소 ]
+                </button>
+                <button id="form-submit-btn" type="submit" class="px-5 py-2.5 bg-accent hover:bg-[#fa8743] text-black font-mono text-[10px] font-black tracking-wider rounded-xs uppercase transition-colors cursor-pointer select-none">
+                  [ BROADCAST ARCHIVE // 아카이브 전송 ]
+                </button>
+              </div>
+            </div>
+
+          </form>
+
+        </div>
+
+        <!-- Right Side: ImgBB Configuration and Local Utilities (Col 9-12) -->
+        <div class="lg:col-span-4 flex flex-col gap-6">
+          
+          <!-- ImgBB Key Console Card -->
+          <div class="border border-dark-border/80 bg-dark-card/25 p-5 rounded-sm flex flex-col gap-4 text-left">
+            <div class="flex items-center justify-between border-b border-dark-border/50 pb-2">
+              <span class="font-mono text-[9px] text-accent font-black uppercase tracking-widest select-none">[ IMGBB CLOUD CONSOLE ]</span>
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            </div>
+            <p class="font-sans text-xs text-dark-muted leading-relaxed font-light">
+              로컬에 내장된 ImgBB 클라우드 기능을 활성화하려면 본인의 API Key를 저장하십시오. 브라우저 영구 캐시에 동기화됩니다.
+            </p>
+            <div class="flex flex-col gap-1">
+              <label class="font-mono text-[8px] text-dark-muted font-bold uppercase">ImgBB API Key_</label>
+              <input id="form-imgbb-key" type="password" placeholder="API Key 입력..." class="w-full bg-dark-bg border border-dark-border py-1.5 px-3 rounded-xs text-xs text-white placeholder-dark-muted font-mono focus:border-accent/40 focus:outline-none" />
+            </div>
+            <p class="font-mono text-[8px] text-dark-muted">
+              * 키가 비어있으면 로컬 압축 본문 (Base64) 데이터셋으로 대체 수록됩니다.
+            </p>
+          </div>
+
+          <!-- Permanent Data Management Console Card -->
+          <div class="border border-dark-border/80 bg-dark-card/25 p-5 rounded-sm flex flex-col gap-4 text-left">
+            <div class="border-b border-dark-border/50 pb-2">
+              <span class="font-mono text-[9px] text-accent font-black uppercase tracking-widest select-none">[ DATA MAINTENANCE ]</span>
+            </div>
+            <p class="font-sans text-xs text-dark-muted leading-relaxed font-light">
+              정적 웹사이트의 이식성을 극대화하기 위해 포트폴리오 원본 JSON 데이터를 다운로드하거나 즉시 동기화하십시오.
+            </p>
+            
+            <div class="flex flex-col gap-2 pt-2">
+              <button onclick="handleDownloadWebsiteZip()" class="w-full flex items-center justify-center gap-2 py-2.5 border border-accent/40 bg-accent-dim/15 hover:bg-accent hover:text-black text-accent font-mono text-[10px] font-black rounded-xs tracking-widest uppercase transition-all duration-200 cursor-pointer select-none">
+                <i data-lucide="folder-archive" class="w-3.5 h-3.5"></i>
+                <span>DOWNLOAD WEBSITE (.ZIP)</span>
+              </button>
+
+              <div class="h-[1px] bg-dark-border/50 my-1"></div>
+
+              <button onclick="handleDownloadBackup()" class="w-full flex items-center justify-center gap-2 py-2 border border-dark-border bg-dark-bg hover:border-accent hover:text-accent font-mono text-[9px] font-bold rounded-xs tracking-wider uppercase transition-colors cursor-pointer select-none">
+                <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                <span>EXPORT BACKUP JSON</span>
+              </button>
+
+              <button onclick="triggerImportBackup()" class="w-full flex items-center justify-center gap-2 py-2 border border-dark-border bg-dark-bg hover:border-accent hover:text-accent font-mono text-[9px] font-bold rounded-xs tracking-wider uppercase transition-colors cursor-pointer select-none">
+                <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+                <span>IMPORT BACKUP JSON</span>
+              </button>
+              <input id="import-backup-file-input" type="file" accept=".json" class="hidden" onchange="handleImportBackupFile(this)" />
+
+              <button onclick="handleCopyStaticCode()" class="w-full flex items-center justify-center gap-2 py-2 border border-dark-border bg-dark-bg hover:border-accent hover:text-accent font-mono text-[9px] font-bold rounded-xs tracking-wider uppercase transition-colors cursor-pointer select-none">
+                <i data-lucide="clipboard" class="w-3.5 h-3.5"></i>
+                <span>COPY DATA TO CODE</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Footer Section -->
+  <footer class="border-t border-dark-border/40 bg-dark-bg/50 py-16 px-6 sm:px-12 text-left">
+    <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-10">
+      
+      <div class="flex flex-col gap-3">
+        <div class="flex items-center gap-1.5 select-none">
+          <span class="font-sync text-xs font-black tracking-widest text-white">ORANGE</span>
+          <span class="w-1.5 h-1.5 bg-accent rounded-full"></span>
+          <span class="font-mono text-[8px] font-black tracking-wider text-dark-muted">ARCHIVE</span>
+        </div>
+        <p class="font-outfit text-[10px] text-dark-muted uppercase font-black tracking-widest">
+          WE ARREST THE ESSENCE OF TIME AND SPACE.
+        </p>
+      </div>
+
+      <div class="flex flex-wrap gap-8 sm:gap-12 text-[10px] font-mono text-dark-muted">
+        <div class="flex flex-col gap-1">
+          <span class="text-accent font-bold uppercase select-none">DIRECT_CONTACT_</span>
+          <span class="text-white font-medium">orange9764@daum.net</span>
+        </div>
+        <div class="flex flex-col gap-1">
+          <span class="text-accent font-bold uppercase select-none">INSTAGRAM_</span>
+          <a href="https://instagram.com" target="_blank" class="text-white hover:text-accent transition-colors font-medium">@orange_film</a>
+        </div>
+        <div class="flex flex-col gap-1">
+          <span class="text-accent font-bold uppercase select-none">COPYRIGHT_</span>
+          <span>© 2026 ORANGE. ALL RIGHTS RESERVED</span>
+        </div>
+      </div>
+
+    </div>
+  </footer>
+
+  <!-- ==================== MODALS PORTAL ==================== -->
+
+  <!-- 1. Password Verification Gate Modal -->
+  <div id="password-gate-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/85 backdrop-blur-md" onclick="closeAdminGate()"></div>
+    <div class="relative w-full max-w-sm bg-dark-card border border-dark-border p-6 sm:p-8 rounded-sm text-left shadow-2xl z-10">
+      <div class="flex items-center justify-between border-b border-dark-border/50 pb-3 mb-6">
+        <div class="flex items-center gap-2">
+          <i data-lucide="shield-alert" class="w-4 h-4 text-accent"></i>
+          <span class="font-mono text-[10px] text-white tracking-widest font-black uppercase">WORKSPACE AUTHENTICATOR</span>
+        </div>
+        <button onclick="closeAdminGate()" class="text-dark-muted hover:text-white transition-colors cursor-pointer">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <form onsubmit="handlePasswordSubmit(event)" class="flex flex-col gap-4">
+        <p class="font-sans text-xs text-dark-muted leading-relaxed font-light">
+          작업실(Workspace) 내부 전시 자재 등록, 수정, ImgBB 클라우드 통제는 관리자만 진입할 수 있습니다.
+        </p>
+        <div class="flex flex-col gap-1.5 mt-2">
+          <label class="font-mono text-[8px] text-dark-muted font-bold uppercase tracking-wider">WORKSPACE PASSWORD_</label>
+          <input required id="gate-password-input" type="password" placeholder="비밀번호 입력..." class="w-full bg-dark-bg border border-dark-border py-2 px-3 rounded-xs text-xs text-white placeholder-dark-muted focus:border-accent/40 focus:outline-none font-mono" />
+        </div>
+        <span id="gate-password-error" class="hidden text-[9px] font-mono text-red-500">* 비밀번호가 올바르지 않습니다. 다시 확인하세요.</span>
+        
+        <button type="submit" class="w-full py-2.5 bg-accent hover:bg-[#fa8743] text-black font-mono text-[10px] font-black tracking-wider uppercase transition-all rounded-xs cursor-pointer select-none">
+          [ ACCESS CABINET // 승인 요청 ]
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 2. Project Details Modal -->
+  <div id="project-detail-overlay" class="hidden fixed inset-0 z-50 flex justify-end">
+    <div class="absolute inset-0 bg-black/80 backdrop-blur-xs" onclick="closeProjectDetail()"></div>
+    <div class="relative w-full max-w-4xl bg-dark-card border-l border-dark-border/80 h-screen overflow-y-auto no-scrollbar z-10 flex flex-col justify-between shadow-2xl p-6 sm:p-12 md:p-16">
+      
+      <!-- Detail Header -->
+      <div class="flex items-center justify-between border-b border-dark-border/40 pb-6 mb-10 text-left">
+        <div class="flex items-center gap-2">
+          <span class="w-1.5 h-1.5 bg-accent rounded-full"></span>
+          <span id="project-detail-header-label" class="font-mono text-[10px] text-dark-muted tracking-widest font-black uppercase">PHOTOGRAPHY // PROJECT INDEX</span>
+        </div>
+        <button onclick="closeProjectDetail()" class="flex items-center gap-1.5 font-mono text-[10px] font-bold text-dark-muted hover:text-white border border-dark-border bg-dark-bg px-2.5 py-1.5 rounded-sm transition-colors cursor-pointer select-none">
+          <span>CLOSE</span>
+          <i data-lucide="x" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+
+      <!-- Detail Body Container -->
+      <div id="project-detail-body" class="flex-grow">
+        <!-- Filled dynamically -->
+      </div>
+
+      <!-- Detail Footer Button -->
+      <div class="border-t border-dark-border/40 pt-10 mt-16 text-center select-none">
+        <button onclick="closeProjectDetail()" class="px-8 py-3 bg-white hover:bg-white/90 text-black font-mono text-[10px] font-black tracking-widest uppercase transition-all rounded-sm cursor-pointer shadow-lg">
+          [ EXIT CABINET // 전시물 닫기 ]
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 3. Zoom Lighbox Layer -->
+  <div id="lightbox-zoom-overlay" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/95 select-none" onclick="closeZoomImage()">
+    <div class="absolute top-6 right-6 font-mono text-[10px] font-bold text-dark-muted bg-dark-bg border border-dark-border px-3 py-1.5 rounded-sm cursor-pointer hover:text-white transition-colors">
+      CLOSE ×
+    </div>
+    <img id="zoomed-lightbox-img" src="" alt="Zoomed View" referrerpolicy="no-referrer" class="max-w-full max-h-full object-contain border border-dark-border rounded-xs shadow-2xl" />
+  </div>
+
+  <!-- 4. Delete Confirmation Dialog -->
+  <div id="delete-confirm-overlay" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 select-none">
+    <div class="absolute inset-0 bg-black/80 backdrop-blur-xs" onclick="closeDeleteConfirm()"></div>
+    <div class="relative w-full max-w-xs bg-dark-card border border-dark-border p-6 rounded-sm text-center shadow-2xl z-10 flex flex-col items-center">
+      <div class="w-10 h-10 rounded-full bg-red-500/15 text-red-500 flex items-center justify-center mb-4 border border-red-500/20">
+        <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+      </div>
+      <span class="font-mono text-[10px] text-white tracking-widest font-black uppercase mb-2">[ PERMANENT ELIMINATION ]</span>
+      <p class="font-sans text-xs text-dark-muted leading-relaxed mb-6 font-light">
+        해당 전시 작품을 아카이브 캐시 및 원본 소스에서 영구적으로 소멸시키겠습니까? 이 작업은 되돌릴 수 없습니다.
+      </p>
+      
+      <div class="flex items-center gap-2 w-full">
+        <button onclick="closeDeleteConfirm()" class="flex-1 py-2 border border-dark-border text-dark-muted font-mono text-[10px] font-bold tracking-wider rounded-xs hover:text-white cursor-pointer transition-colors">
+          [ CANCEL_ ]
+        </button>
+        <button onclick="confirmDeleteProject()" class="flex-1 py-2 bg-red-500 hover:bg-red-600 text-white font-mono text-[10px] font-black tracking-wider rounded-xs uppercase cursor-pointer transition-all">
+          [ ELIMINATE × ]
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dynamic Toast Overlay stack -->
+  <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-3 max-w-sm pointer-events-none"></div>
+
+  <!-- JS Controller Link -->
+  <script src="./script.js"></script>
+</body>
+</html>
