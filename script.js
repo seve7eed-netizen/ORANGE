@@ -1242,3 +1242,34 @@ function handleCopyStaticCode() {
     showToast('복사에 실패했습니다. 개발자 도구를 열어 로그를 확인하십시오.', 'error');
   }
 }
+
+// Expose functions globally to ensure inline HTML event handlers (onclick, onsubmit, onchange) work perfectly in Vite production builds
+window.navigateToTab = navigateToTab;
+window.openAdminAccess = openAdminAccess;
+window.logoutAdmin = logoutAdmin;
+window.setFilter = setFilter;
+window.handleSearch = handleSearch;
+window.showAdminTab = showAdminTab;
+window.handleProjectFormSubmit = handleProjectFormSubmit;
+window.addSupplementaryImageInput = addSupplementaryImageInput;
+window.handleImgbbUploadClick = handleImgbbUploadClick;
+window.triggerImgbbMultiUpload = triggerImgbbMultiUpload;
+window.clearProjectForm = clearProjectForm;
+window.handleDownloadWebsiteZip = handleDownloadWebsiteZip;
+window.handleDownloadBackup = handleDownloadBackup;
+window.triggerImportBackup = triggerImportBackup;
+window.handleImportBackupFile = handleImportBackupFile;
+window.handleCopyStaticCode = handleCopyStaticCode;
+window.closeAdminGate = closeAdminGate;
+window.handlePasswordSubmit = handlePasswordSubmit;
+window.closeProjectDetail = closeProjectDetail;
+window.closeZoomImage = closeZoomImage;
+window.closeDeleteConfirm = closeDeleteConfirm;
+window.confirmDeleteProject = confirmDeleteProject;
+window.resetFilters = resetFilters;
+window.openProjectDetail = openProjectDetail;
+window.zoomImage = zoomImage;
+window.startEditProject = startEditProject;
+window.triggerDeleteProject = triggerDeleteProject;
+window.setSupplementaryAsCover = setSupplementaryAsCover;
+window.removeSupplementaryImage = removeSupplementaryImage;
